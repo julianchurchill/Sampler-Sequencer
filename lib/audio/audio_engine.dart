@@ -13,13 +13,12 @@ import 'package:path_provider/path_provider.dart';
 /// Builds a 16-bit mono PCM WAV file in memory.
 Uint8List _buildWav(Float64List samples, int sampleRate) {
   final numSamples = samples.length;
-  final dataBytes = numSamples * 2; // 16-bit = 2 bytes per sample
+  final dataBytes = numSamples * 2;
   final totalBytes = 44 + dataBytes;
 
   final buf = ByteData(totalBytes);
   int pos = 0;
 
-  // RIFF header
   buf.setUint8(pos++, 0x52); // R
   buf.setUint8(pos++, 0x49); // I
   buf.setUint8(pos++, 0x46); // F
@@ -30,20 +29,18 @@ Uint8List _buildWav(Float64List samples, int sampleRate) {
   buf.setUint8(pos++, 0x56); // V
   buf.setUint8(pos++, 0x45); // E
 
-  // fmt chunk
   buf.setUint8(pos++, 0x66); // f
   buf.setUint8(pos++, 0x6D); // m
   buf.setUint8(pos++, 0x74); // t
   buf.setUint8(pos++, 0x20); // (space)
-  buf.setUint32(pos, 16, Endian.little); pos += 4; // chunk size
+  buf.setUint32(pos, 16, Endian.little); pos += 4;
   buf.setUint16(pos, 1, Endian.little); pos += 2;  // PCM
   buf.setUint16(pos, 1, Endian.little); pos += 2;  // mono
   buf.setUint32(pos, sampleRate, Endian.little); pos += 4;
-  buf.setUint32(pos, sampleRate * 2, Endian.little); pos += 4; // byte rate
-  buf.setUint16(pos, 2, Endian.little); pos += 2;  // block align
-  buf.setUint16(pos, 16, Endian.little); pos += 2; // bits per sample
+  buf.setUint32(pos, sampleRate * 2, Endian.little); pos += 4;
+  buf.setUint16(pos, 2, Endian.little); pos += 2;
+  buf.setUint16(pos, 16, Endian.little); pos += 2;
 
-  // data chunk
   buf.setUint8(pos++, 0x64); // d
   buf.setUint8(pos++, 0x61); // a
   buf.setUint8(pos++, 0x74); // t
@@ -59,62 +56,87 @@ Uint8List _buildWav(Float64List samples, int sampleRate) {
   return buf.buffer.asUint8List();
 }
 
-/// Exponential amplitude envelope (fast attack, exponential decay).
-double _env(int i, int totalSamples, double decayRate) {
-  return math.exp(-decayRate * i / totalSamples);
-}
+/// Exponential amplitude envelope.
+double _env(int i, int totalSamples, double decayRate) =>
+    math.exp(-decayRate * i / totalSamples);
 
-// ---- Synthesised drum sounds ------------------------------------------------
+// ---------------------------------------------------------------------------
+// Synthesised drum generators
+// ---------------------------------------------------------------------------
 
-Float64List _generateKick(int sr) {
+Float64List _generateKick808(int sr) {
   const durationMs = 500;
-  final n = (sr * durationMs ~/ 1000);
+  final n = sr * durationMs ~/ 1000;
   final buf = Float64List(n);
-  // Sine with frequency sweep: 180 Hz → 40 Hz over 200 ms
-  const f0 = 180.0;
-  const f1 = 40.0;
+  const f0 = 180.0, f1 = 40.0;
   final sweepSamples = sr * 200 ~/ 1000;
   double phase = 0.0;
   for (int i = 0; i < n; i++) {
-    final t = i / sr;
-    final frac = (i < sweepSamples) ? (i / sweepSamples) : 1.0;
+    final frac = (i < sweepSamples) ? i / sweepSamples : 1.0;
     final freq = f0 + (f1 - f0) * frac;
     phase += 2 * math.pi * freq / sr;
-    final amp = _env(i, n, 4.0);
-    buf[i] = math.sin(phase) * amp * 0.9;
+    buf[i] = math.sin(phase) * _env(i, n, 4.0) * 0.9;
+  }
+  return buf;
+}
+
+Float64List _generateKickHard(int sr) {
+  const durationMs = 300;
+  final n = sr * durationMs ~/ 1000;
+  final buf = Float64List(n);
+  const f0 = 240.0, f1 = 50.0;
+  final sweepSamples = sr * 60 ~/ 1000;
+  double phase = 0.0;
+  for (int i = 0; i < n; i++) {
+    final frac = (i < sweepSamples) ? i / sweepSamples : 1.0;
+    final freq = f0 + (f1 - f0) * frac;
+    phase += 2 * math.pi * freq / sr;
+    buf[i] = math.sin(phase) * _env(i, n, 8.0) * 0.9;
   }
   return buf;
 }
 
 Float64List _generateSnare(int sr) {
   const durationMs = 200;
-  final n = (sr * durationMs ~/ 1000);
+  final n = sr * durationMs ~/ 1000;
   final buf = Float64List(n);
   final rng = math.Random(42);
-  // Body: 200 Hz sine + white noise
   double phase = 0.0;
   for (int i = 0; i < n; i++) {
     final amp = _env(i, n, 8.0);
-    final noise = (rng.nextDouble() * 2 - 1);
     phase += 2 * math.pi * 200.0 / sr;
-    buf[i] = (noise * 0.6 + math.sin(phase) * 0.4) * amp * 0.85;
+    buf[i] = ((rng.nextDouble() * 2 - 1) * 0.6 + math.sin(phase) * 0.4) * amp * 0.85;
+  }
+  return buf;
+}
+
+Float64List _generateRimShot(int sr) {
+  const durationMs = 120;
+  final n = sr * durationMs ~/ 1000;
+  final buf = Float64List(n);
+  final rng = math.Random(99);
+  double phase = 0.0;
+  for (int i = 0; i < n; i++) {
+    final amp = _env(i, n, 15.0);
+    phase += 2 * math.pi * 800.0 / sr;
+    buf[i] = (math.sin(phase) * 0.7 + (rng.nextDouble() * 2 - 1) * 0.3) * amp * 0.8;
   }
   return buf;
 }
 
 Float64List _generateHiHatClosed(int sr) {
   const durationMs = 80;
-  final n = (sr * durationMs ~/ 1000);
+  final n = sr * durationMs ~/ 1000;
   final buf = Float64List(n);
   final rng = math.Random(7);
-  // High-passed white noise: simple HPF via difference
   double prev = 0.0;
+  double lastNoise = 0.0;
   for (int i = 0; i < n; i++) {
     final amp = _env(i, n, 12.0);
-    final noise = (rng.nextDouble() * 2 - 1);
-    // 1-pole HPF: y[n] = 0.9*(y[n-1] + x[n] - x[n-1])
-    final hp = 0.95 * (prev + noise - (i > 0 ? (rng.nextDouble() * 2 - 1) : 0));
+    final noise = rng.nextDouble() * 2 - 1;
+    final hp = 0.95 * (prev + noise - lastNoise);
     prev = hp;
+    lastNoise = noise;
     buf[i] = hp * amp * 0.7;
   }
   return buf;
@@ -122,19 +144,101 @@ Float64List _generateHiHatClosed(int sr) {
 
 Float64List _generateHiHatOpen(int sr) {
   const durationMs = 600;
-  final n = (sr * durationMs ~/ 1000);
+  final n = sr * durationMs ~/ 1000;
   final buf = Float64List(n);
   final rng = math.Random(13);
   double prev = 0.0;
+  double lastNoise = 0.0;
   for (int i = 0; i < n; i++) {
     final amp = _env(i, n, 3.5);
-    final noise = (rng.nextDouble() * 2 - 1);
-    final hp = 0.95 * (prev + noise - (i > 0 ? (rng.nextDouble() * 2 - 1) : 0));
+    final noise = rng.nextDouble() * 2 - 1;
+    final hp = 0.95 * (prev + noise - lastNoise);
     prev = hp;
+    lastNoise = noise;
     buf[i] = hp * amp * 0.65;
   }
   return buf;
 }
+
+Float64List _generateClap(int sr) {
+  const durationMs = 220;
+  final n = sr * durationMs ~/ 1000;
+  final buf = Float64List(n);
+  final rng = math.Random(55);
+  // Three short noise bursts 10 ms apart
+  for (int burst = 0; burst < 3; burst++) {
+    final offset = sr * burst * 10 ~/ 1000;
+    final burstLen = sr * 14 ~/ 1000;
+    for (int i = 0; i < burstLen && offset + i < n; i++) {
+      buf[offset + i] += (rng.nextDouble() * 2 - 1) * _env(i, burstLen, 14.0) * 0.85;
+    }
+  }
+  // Noise tail
+  final tailStart = sr * 30 ~/ 1000;
+  for (int i = tailStart; i < n; i++) {
+    buf[i] += (rng.nextDouble() * 2 - 1) * _env(i - tailStart, n - tailStart, 10.0) * 0.45;
+  }
+  return buf;
+}
+
+Float64List _generateTom(int sr) {
+  const durationMs = 400;
+  final n = sr * durationMs ~/ 1000;
+  final buf = Float64List(n);
+  const f0 = 120.0, f1 = 60.0;
+  final sweepSamples = sr * 150 ~/ 1000;
+  double phase = 0.0;
+  for (int i = 0; i < n; i++) {
+    final frac = (i < sweepSamples) ? i / sweepSamples : 1.0;
+    final freq = f0 + (f1 - f0) * frac;
+    phase += 2 * math.pi * freq / sr;
+    buf[i] = math.sin(phase) * _env(i, n, 5.0) * 0.85;
+  }
+  return buf;
+}
+
+Float64List _generateCowbell(int sr) {
+  const durationMs = 800;
+  final n = sr * durationMs ~/ 1000;
+  final buf = Float64List(n);
+  double p1 = 0.0, p2 = 0.0;
+  for (int i = 0; i < n; i++) {
+    p1 += 2 * math.pi * 562.0 / sr;
+    p2 += 2 * math.pi * 845.0 / sr;
+    final amp = _env(i, n, 6.0);
+    final s1 = math.sin(p1) > 0 ? 1.0 : -1.0;
+    final s2 = math.sin(p2) > 0 ? 1.0 : -1.0;
+    buf[i] = (s1 + s2) * 0.5 * amp * 0.6;
+  }
+  return buf;
+}
+
+// ---------------------------------------------------------------------------
+// Preset catalogue
+// ---------------------------------------------------------------------------
+
+typedef _SampleGenerator = Float64List Function(int sr);
+
+class DrumPreset {
+  const DrumPreset(this.name, this.generator);
+  final String name;
+  final _SampleGenerator generator;
+}
+
+final List<DrumPreset> kDrumPresets = [
+  DrumPreset('Kick 808',  _generateKick808),
+  DrumPreset('Kick Hard', _generateKickHard),
+  DrumPreset('Snare',     _generateSnare),
+  DrumPreset('Rim Shot',  _generateRimShot),
+  DrumPreset('HH Closed', _generateHiHatClosed),
+  DrumPreset('HH Open',   _generateHiHatOpen),
+  DrumPreset('Clap',      _generateClap),
+  DrumPreset('Tom',       _generateTom),
+  DrumPreset('Cowbell',   _generateCowbell),
+];
+
+/// Default preset index assigned to each track (0=Kick808, 2=Snare, 4=HH Closed, 5=HH Open).
+const List<int> kDefaultPresetIndices = [0, 2, 4, 5];
 
 // ---------------------------------------------------------------------------
 // AudioEngine
@@ -142,35 +246,45 @@ Float64List _generateHiHatOpen(int sr) {
 
 const int _kSampleRate = 44100;
 
-typedef _SampleGenerator = Float64List Function(int sr);
-
-final List<_SampleGenerator> _generators = [
-  _generateKick,
-  _generateSnare,
-  _generateHiHatClosed,
-  _generateHiHatOpen,
-];
-
 class AudioEngine {
   final List<AudioPlayer> _players = [];
-  final List<String?> _customPaths = List.filled(4, null);
-  final List<String> _defaultWavPaths = [];
+
+  /// One cached WAV path per preset, indexed by kDrumPresets index.
+  final List<String> _presetPaths = [];
+
+  /// Per-track active preset index.
+  final List<int> _trackPresetIndex = List.from(kDefaultPresetIndices);
+
+  /// Per-track custom file override (null = use preset).
+  final List<String?> _trackCustomPath = List.filled(4, null);
+
+  /// Per-track display name shown in the UI.
+  final List<String> _trackNames = [
+    kDrumPresets[kDefaultPresetIndices[0]].name,
+    kDrumPresets[kDefaultPresetIndices[1]].name,
+    kDrumPresets[kDefaultPresetIndices[2]].name,
+    kDrumPresets[kDefaultPresetIndices[3]].name,
+  ];
+
   bool _ready = false;
 
   bool get isReady => _ready;
 
+  String trackName(int track) => _trackNames[track];
+  bool hasCustomPath(int track) => _trackCustomPath[track] != null;
+
   Future<void> init() async {
     final tmpDir = await getTemporaryDirectory();
 
-    // Write default synth WAVs to temp directory.
-    for (int i = 0; i < 4; i++) {
-      final wavData = _buildWav(_generators[i](_kSampleRate), _kSampleRate);
-      final path = '${tmpDir.path}/drum_default_$i.wav';
+    // Synthesise all presets to temp WAV files.
+    for (int i = 0; i < kDrumPresets.length; i++) {
+      final wavData = _buildWav(kDrumPresets[i].generator(_kSampleRate), _kSampleRate);
+      final path = '${tmpDir.path}/preset_$i.wav';
       await File(path).writeAsBytes(wavData);
-      _defaultWavPaths.add(path);
+      _presetPaths.add(path);
     }
 
-    // One AudioPlayer per track (low-latency mode).
+    // One low-latency AudioPlayer per track.
     for (int i = 0; i < 4; i++) {
       final player = AudioPlayer();
       await player.setPlayerMode(PlayerMode.lowLatency);
@@ -181,17 +295,32 @@ class AudioEngine {
     _ready = true;
   }
 
-  /// Set a custom audio file path for a track (null = use synth default).
-  void setCustomPath(int track, String? path) {
-    _customPaths[track] = path;
+  /// Switch a track to a built-in preset.
+  void setPreset(int track, int presetIndex) {
+    _trackCustomPath[track] = null;
+    _trackPresetIndex[track] = presetIndex;
+    _trackNames[track] = kDrumPresets[presetIndex].name;
   }
 
-  String? customPath(int track) => _customPaths[track];
+  /// Override a track with a user-picked file.
+  void setCustomPath(int track, String path) {
+    _trackCustomPath[track] = path;
+    final filename = path.split('/').last;
+    _trackNames[track] = filename.contains('.')
+        ? filename.substring(0, filename.lastIndexOf('.'))
+        : filename;
+  }
+
+  /// Clear custom file override; track reverts to its current preset.
+  void clearCustomPath(int track) {
+    _trackCustomPath[track] = null;
+    _trackNames[track] = kDrumPresets[_trackPresetIndex[track]].name;
+  }
 
   /// Trigger a one-shot hit on [track].
   Future<void> trigger(int track) async {
     if (!_ready) return;
-    final path = _customPaths[track] ?? _defaultWavPaths[track];
+    final path = _trackCustomPath[track] ?? _presetPaths[_trackPresetIndex[track]];
     try {
       await _players[track].stop();
       await _players[track].play(DeviceFileSource(path));
