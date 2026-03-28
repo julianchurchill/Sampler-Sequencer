@@ -35,6 +35,9 @@ class _TrackLabel extends StatelessWidget {
     final hasSample = context.select<SequencerModel, bool>(
       (m) => m.hasSample(trackIndex),
     );
+    final sampleName = context.select<SequencerModel, String?>(
+      (m) => m.sampleName(trackIndex),
+    );
     final color = kTrackColors[trackIndex];
     final name = kTrackNames[trackIndex];
 
@@ -75,6 +78,18 @@ class _TrackLabel extends StatelessWidget {
                 ],
               ],
             ),
+            if (sampleName != null) ...[
+              const SizedBox(height: 3),
+              Text(
+                sampleName,
+                maxLines: 1,
+                overflow: TextOverflow.ellipsis,
+                style: const TextStyle(
+                  color: kTextDim,
+                  fontSize: 8,
+                ),
+              ),
+            ],
           ],
         ),
       ),
