@@ -50,30 +50,30 @@ class _TrackLabel extends StatelessWidget {
     // Tint the settings button in the track colour when any customisation is active.
     final buttonColor = (hasCustom || hasTrim) ? color : kTextDim;
 
-    return SizedBox(
-      width: 72,
-      child: Padding(
-        padding: const EdgeInsets.symmetric(horizontal: 4),
-        child: Row(
-          children: [
-            Expanded(
-              child: Text(
-                name,
-                maxLines: 2,
-                overflow: TextOverflow.ellipsis,
-                style: TextStyle(
-                  color: color,
-                  fontSize: 11,
-                  fontWeight: FontWeight.w800,
-                  letterSpacing: 0.8,
+    return GestureDetector(
+      onTap: () => _showSettings(context),
+      child: SizedBox(
+        width: 72,
+        child: Padding(
+          padding: const EdgeInsets.symmetric(horizontal: 4),
+          child: Row(
+            children: [
+              Expanded(
+                child: Text(
+                  name,
+                  maxLines: 2,
+                  overflow: TextOverflow.ellipsis,
+                  style: TextStyle(
+                    color: color,
+                    fontSize: 11,
+                    fontWeight: FontWeight.w800,
+                    letterSpacing: 0.8,
+                  ),
                 ),
               ),
-            ),
-            GestureDetector(
-              onTap: () => _showSettings(context),
-              child: Icon(Icons.tune, size: 18, color: buttonColor),
-            ),
-          ],
+              Icon(Icons.tune, size: 18, color: buttonColor),
+            ],
+          ),
         ),
       ),
     );
