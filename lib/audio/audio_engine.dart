@@ -298,7 +298,7 @@ class AudioEngine {
       await player.setPlayerMode(PlayerMode.lowLatency);
       await player.setReleaseMode(ReleaseMode.stop);
       await player.setAudioContext(AudioContext(
-        android: AudioContextAndroid(audioFocus: AudioFocus.none),
+        android: AudioContextAndroid(audioFocus: AndroidAudioFocus.none),
       ));
       _players.add(player);
     }
