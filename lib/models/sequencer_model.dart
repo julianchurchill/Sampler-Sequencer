@@ -79,6 +79,12 @@ class SequencerModel extends ChangeNotifier {
     }
   }
 
+  /// Load a library sample with a known [path] and display [name].
+  void loadCustomSample2(int track, String path, String name) {
+    _audio.setCustomPathWithName(track, path, name);
+    notifyListeners();
+  }
+
   void clearCustomSample(int track) {
     _audio.clearCustomPath(track);
     notifyListeners();

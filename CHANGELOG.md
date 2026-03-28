@@ -5,6 +5,16 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [1.3.0] - 2026-03-28
+
+### Added
+- Record audio from the device microphone directly in the sound picker
+- Persistent sample library — recordings are saved to app storage and survive restarts
+- Rename saved samples via the pencil icon in the library list
+- Delete saved samples via the trash icon
+- Library samples can be loaded onto any track with the LOAD button
+- Pulsing recording indicator while mic is active
+
 ## [1.2.0] - 2026-03-28
 
 ### Added
