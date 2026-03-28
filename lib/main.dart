@@ -24,7 +24,7 @@ class SamplerApp extends StatelessWidget {
   Widget build(BuildContext context) {
     return MultiProvider(
       providers: [
-        ChangeNotifierProvider(create: (_) => SequencerModel()),
+        ChangeNotifierProvider(create: (_) => SequencerModel()..init()),
         ChangeNotifierProvider(create: (_) => SampleLibrary()..init()),
       ],
       child: MaterialApp(
