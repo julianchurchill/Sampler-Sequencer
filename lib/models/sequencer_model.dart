@@ -32,6 +32,11 @@ class SequencerModel extends ChangeNotifier {
 
   bool stepEnabled(int track, int step) => _steps[track][step];
   bool hasSample(int track) => _audio.customPath(track) != null;
+  String? sampleName(int track) {
+    final path = _audio.customPath(track);
+    if (path == null) return null;
+    return path.split('/').last;
+  }
 
   // ---- Public actions ----
 
