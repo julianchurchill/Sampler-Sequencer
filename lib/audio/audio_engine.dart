@@ -288,14 +288,18 @@ class AudioEngine {
       _presetPaths.add(path);
     }
 
-    // One AudioPlayer per track.
-    // Default mode (ExoPlayer) is used instead of PlayerMode.lowLatency
-    // (SoundPool) because SoundPool shares a stream pool across all players;
-    // hitting the maxStreams limit causes Android to silently stop the oldest
-    // stream, which can kill a sample on a different track.
+    // One low-latency AudioPlayer per track.
+    // AudioFocus.none prevents each player requesting AUDIOFOCUS_GAIN, which
+    // would cause Android to notify other players in the app to stop — the
+    // root cause of cross-track sample cutting. With focus management
+    // disabled, all 4 tracks play independently.
     for (int i = 0; i < 4; i++) {
       final player = AudioPlayer();
+      await player.setPlayerMode(PlayerMode.lowLatency);
       await player.setReleaseMode(ReleaseMode.stop);
+      await player.setAudioContext(const AudioContext(
+        android: AudioContextAndroid(audioFocus: AudioFocus.none),
+      ));
       _players.add(player);
     }
 
