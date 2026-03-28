@@ -5,6 +5,12 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [1.5.1] - 2026-03-28
+
+### Changed
+- Track label now shows a single `tune` icon button instead of separate LOAD, TRIM, and volume controls; tapping it opens a track settings sheet containing volume slider, sound picker, and trim editor in one place
+- Settings icon is tinted in the track colour when a custom sound or trim is active, providing at-a-glance status
+
 ## [1.5.0] - 2026-03-28
 
 ### Added
