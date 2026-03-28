@@ -1,7 +1,7 @@
 name: sampler_sequencer
 description: A hardware-style drum machine and step sequencer app.
 publish_to: 'none'
-version: 1.5.0+9
+version: 1.5.1+10
 
 environment:
   sdk: '>=3.0.0 <4.0.0'

@@ -37,103 +37,49 @@ class _TrackLabel extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    final hasCustom = context.select<SequencerModel, bool>(
-      (m) => m.hasCustomSample(trackIndex),
-    );
     final name = context.select<SequencerModel, String>(
       (m) => m.trackName(trackIndex),
     );
-    final volume = context.select<SequencerModel, double>(
-      (m) => m.trackVolume(trackIndex),
+    final hasCustom = context.select<SequencerModel, bool>(
+      (m) => m.hasCustomSample(trackIndex),
     );
     final hasTrim = context.select<SequencerModel, bool>(
       (m) => m.hasTrim(trackIndex),
     );
     final color = kTrackColors[trackIndex];
+    // Tint the settings button in the track colour when any customisation is active.
+    final buttonColor = (hasCustom || hasTrim) ? color : kTextDim;
 
-    return SizedBox(
-      width: 72,
-      child: Padding(
-        padding: const EdgeInsets.symmetric(horizontal: 4),
-        child: Column(
-          mainAxisAlignment: MainAxisAlignment.center,
-          crossAxisAlignment: CrossAxisAlignment.start,
-          children: [
-            Text(
-              name,
-              maxLines: 1,
-              overflow: TextOverflow.ellipsis,
-              style: TextStyle(
-                color: color,
-                fontSize: 11,
-                fontWeight: FontWeight.w800,
-                letterSpacing: 0.8,
-              ),
-            ),
-            const SizedBox(height: 2),
-            Row(
-              children: [
-                _SmallButton(
-                  label: 'LOAD',
-                  color: color,
-                  onTap: () => _showSoundPicker(context),
-                ),
-                if (hasCustom) ...[
-                  const SizedBox(width: 4),
-                  _SmallButton(
-                    label: '×',
-                    color: kTextDim,
-                    onTap: () =>
-                        context.read<SequencerModel>().clearCustomSample(trackIndex),
+    return GestureDetector(
+      onTap: () => _showSettings(context),
+      child: SizedBox(
+        width: 72,
+        child: Padding(
+          padding: const EdgeInsets.symmetric(horizontal: 4),
+          child: Row(
+            children: [
+              Expanded(
+                child: Text(
+                  name,
+                  maxLines: 2,
+                  overflow: TextOverflow.ellipsis,
+                  style: TextStyle(
+                    color: color,
+                    fontSize: 11,
+                    fontWeight: FontWeight.w800,
+                    letterSpacing: 0.8,
                   ),
-                ],
-              ],
-            ),
-            const SizedBox(height: 2),
-            Row(
-              children: [
-                _SmallButton(
-                  label: 'TRIM',
-                  color: hasTrim ? color : kTextDim,
-                  onTap: () => _showTrimEditor(context),
                 ),
-                if (hasTrim) ...[
-                  const SizedBox(width: 4),
-                  _SmallButton(
-                    label: '×',
-                    color: kTextDim,
-                    onTap: () =>
-                        context.read<SequencerModel>().clearTrim(trackIndex),
-                  ),
-                ],
-              ],
-            ),
-            const SizedBox(height: 2),
-            SliderTheme(
-              data: SliderTheme.of(context).copyWith(
-                trackHeight: 2,
-                thumbShape: const RoundSliderThumbShape(enabledThumbRadius: 5),
-                overlayShape: const RoundSliderOverlayShape(overlayRadius: 10),
-                thumbColor: color,
-                activeTrackColor: color,
-                inactiveTrackColor: color.withValues(alpha: 0.25),
-                overlayColor: color.withValues(alpha: 0.15),
               ),
-              child: Slider(
-                value: volume,
-                min: 0.0,
-                max: 1.0,
-                onChanged: (v) =>
-                    context.read<SequencerModel>().setTrackVolume(trackIndex, v),
-              ),
-            ),
-          ],
+              Icon(Icons.tune, size: 18, color: buttonColor),
+            ],
+          ),
         ),
       ),
     );
   }
 
-  void _showTrimEditor(BuildContext context) {
+  void _showSettings(BuildContext context) {
     showModalBottomSheet<void>(
       context: context,
       backgroundColor: kPanelColor,
@@ -141,14 +87,27 @@ class _TrackLabel extends StatelessWidget {
       shape: const RoundedRectangleBorder(
         borderRadius: BorderRadius.vertical(top: Radius.circular(12)),
       ),
-      builder: (sheetCtx) => Provider.value(
-        value: context.read<SequencerModel>(),
-        child: TrimEditorSheet(trackIndex: trackIndex),
+      builder: (sheetCtx) => MultiProvider(
+        providers: [
+          ChangeNotifierProvider.value(value: context.read<SequencerModel>()),
+          ChangeNotifierProvider.value(value: context.read<SampleLibrary>()),
+        ],
+        child: _TrackSettingsSheet(trackIndex: trackIndex),
       ),
     );
   }
+}
 
-  void _showSoundPicker(BuildContext context) {
+// ---------------------------------------------------------------------------
+// Track settings sheet  (volume + sound + trim in one place)
+// ---------------------------------------------------------------------------
+
+class _TrackSettingsSheet extends StatelessWidget {
+  const _TrackSettingsSheet({required this.trackIndex});
+  final int trackIndex;
+
+  void _openSoundPicker(BuildContext context) {
+    Navigator.pop(context); // close settings first
     showModalBottomSheet<void>(
       context: context,
       backgroundColor: kPanelColor,
@@ -165,6 +124,157 @@ class _TrackLabel extends StatelessWidget {
           ChangeNotifierProvider.value(value: context.read<SampleLibrary>()),
         ],
         child: _SoundPickerSheet(trackIndex: trackIndex),
+      ),
+    );
+  }
+
+  void _openTrimEditor(BuildContext context) {
+    Navigator.pop(context); // close settings first
+    showModalBottomSheet<void>(
+      context: context,
+      backgroundColor: kPanelColor,
+      isScrollControlled: true,
+      shape: const RoundedRectangleBorder(
+        borderRadius: BorderRadius.vertical(top: Radius.circular(12)),
+      ),
+      builder: (sheetCtx) => Provider.value(
+        value: context.read<SequencerModel>(),
+        child: TrimEditorSheet(trackIndex: trackIndex),
+      ),
+    );
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final color = kTrackColors[trackIndex];
+    final model = context.watch<SequencerModel>();
+    final volume = model.trackVolume(trackIndex);
+    final hasCustom = model.hasCustomSample(trackIndex);
+    final hasTrim = model.hasTrim(trackIndex);
+    final soundName = model.trackName(trackIndex);
+
+    String trimLabel = 'No trim';
+    if (hasTrim) {
+      final s = model.trimStart(trackIndex);
+      final e = model.trimEnd(trackIndex);
+      String fmt(Duration d) {
+        final ms = d.inMilliseconds;
+        return '${ms ~/ 1000}.${((ms % 1000) ~/ 10).toString().padLeft(2, '0')}s';
+      }
+      trimLabel = e != null ? '${fmt(s)} – ${fmt(e)}' : '${fmt(s)} – end';
+    }
+
+    return Padding(
+      padding: const EdgeInsets.fromLTRB(16, 16, 16, 32),
+      child: Column(
+        mainAxisSize: MainAxisSize.min,
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          // Header
+          Text(
+            model.trackName(trackIndex).toUpperCase(),
+            style: TextStyle(
+              color: color,
+              fontSize: 11,
+              fontWeight: FontWeight.w800,
+              letterSpacing: 1.5,
+            ),
+          ),
+          const SizedBox(height: 20),
+
+          // ── Volume ──────────────────────────────────────────────────
+          const _SectionLabel(label: 'VOLUME'),
+          const SizedBox(height: 4),
+          Row(
+            children: [
+              const Icon(Icons.volume_down, size: 16, color: kTextDim),
+              Expanded(
+                child: SliderTheme(
+                  data: SliderTheme.of(context).copyWith(
+                    trackHeight: 3,
+                    thumbShape: const RoundSliderThumbShape(enabledThumbRadius: 7),
+                    overlayShape: const RoundSliderOverlayShape(overlayRadius: 14),
+                    thumbColor: color,
+                    activeTrackColor: color,
+                    inactiveTrackColor: color.withValues(alpha: 0.25),
+                    overlayColor: color.withValues(alpha: 0.15),
+                  ),
+                  child: Slider(
+                    value: volume,
+                    min: 0.0,
+                    max: 1.0,
+                    onChanged: (v) =>
+                        context.read<SequencerModel>().setTrackVolume(trackIndex, v),
+                  ),
+                ),
+              ),
+              const Icon(Icons.volume_up, size: 16, color: kTextDim),
+            ],
+          ),
+          const SizedBox(height: 20),
+
+          // ── Sound ────────────────────────────────────────────────────
+          const _SectionLabel(label: 'SOUND'),
+          const SizedBox(height: 8),
+          Row(
+            children: [
+              Expanded(
+                child: Text(
+                  soundName,
+                  maxLines: 1,
+                  overflow: TextOverflow.ellipsis,
+                  style: const TextStyle(color: Colors.white, fontSize: 12),
+                ),
+              ),
+              const SizedBox(width: 8),
+              _SmallButton(
+                label: 'CHANGE',
+                color: color,
+                onTap: () => _openSoundPicker(context),
+              ),
+              if (hasCustom) ...[
+                const SizedBox(width: 6),
+                _SmallButton(
+                  label: '×',
+                  color: kTextDim,
+                  onTap: () => context.read<SequencerModel>().clearCustomSample(trackIndex),
+                ),
+              ],
+            ],
+          ),
+          const SizedBox(height: 20),
+
+          // ── Trim ─────────────────────────────────────────────────────
+          const _SectionLabel(label: 'TRIM'),
+          const SizedBox(height: 8),
+          Row(
+            children: [
+              Expanded(
+                child: Text(
+                  trimLabel,
+                  style: TextStyle(
+                    color: hasTrim ? Colors.white : kTextDim,
+                    fontSize: 12,
+                  ),
+                ),
+              ),
+              const SizedBox(width: 8),
+              _SmallButton(
+                label: 'EDIT',
+                color: hasTrim ? color : kTextDim,
+                onTap: () => _openTrimEditor(context),
+              ),
+              if (hasTrim) ...[
+                const SizedBox(width: 6),
+                _SmallButton(
+                  label: '×',
+                  color: kTextDim,
+                  onTap: () => context.read<SequencerModel>().clearTrim(trackIndex),
+                ),
+              ],
+            ],
+          ),
+        ],
       ),
     );
   }
