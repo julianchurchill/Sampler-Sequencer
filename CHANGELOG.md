@@ -5,6 +5,12 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [1.3.2] - 2026-03-28
+
+### Fixed
+- Triggering a sample no longer stops samples playing on other tracks; root cause was each AudioPlayer independently requesting `AUDIOFOCUS_GAIN`, causing Android to signal other in-app players to stop. Fixed by setting `AudioFocus.none` on all players
+- Samples on the same track no longer overlap when re-triggered; a generation counter ensures a stale stop()→play() sequence is abandoned if a newer trigger has already started
+
 ## [1.3.1] - 2026-03-28
 
 ### Fixed
