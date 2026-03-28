@@ -31,12 +31,8 @@ class SequencerModel extends ChangeNotifier {
   int get currentStep => _currentStep;
 
   bool stepEnabled(int track, int step) => _steps[track][step];
-  bool hasSample(int track) => _audio.customPath(track) != null;
-  String? sampleName(int track) {
-    final path = _audio.customPath(track);
-    if (path == null) return null;
-    return path.split('/').last;
-  }
+  bool hasCustomSample(int track) => _audio.hasCustomPath(track);
+  String trackName(int track) => _audio.trackName(track);
 
   // ---- Public actions ----
 
@@ -57,13 +53,17 @@ class SequencerModel extends ChangeNotifier {
     _bpm = bpm.clamp(kMinBpm, kMaxBpm);
     notifyListeners();
     if (_isPlaying) {
-      // Restart periodic timer with updated interval (no extra hit).
       _stepTimer?.cancel();
       _stepTimer = Timer.periodic(_stepDuration, (_) => _tickStep());
     }
   }
 
-  Future<void> loadSample(int trackIdx) async {
+  void loadPreset(int track, int presetIndex) {
+    _audio.setPreset(track, presetIndex);
+    notifyListeners();
+  }
+
+  Future<void> loadCustomSample(int track) async {
     try {
       final result = await FilePicker.platform.pickFiles(
         type: FileType.audio,
@@ -71,7 +71,7 @@ class SequencerModel extends ChangeNotifier {
       );
       final path = result?.files.single.path;
       if (path != null) {
-        _audio.setCustomPath(trackIdx, path);
+        _audio.setCustomPath(track, path);
         notifyListeners();
       }
     } catch (e) {
@@ -79,8 +79,8 @@ class SequencerModel extends ChangeNotifier {
     }
   }
 
-  void clearSample(int trackIdx) {
-    _audio.setCustomPath(trackIdx, null);
+  void clearCustomSample(int track) {
+    _audio.clearCustomPath(track);
     notifyListeners();
   }
 
@@ -93,7 +93,6 @@ class SequencerModel extends ChangeNotifier {
 
   // ---- Private helpers ----
 
-  /// Duration of one 16th-note step at current BPM.
   Duration get _stepDuration =>
       Duration(microseconds: (60000000 / (_bpm * kStepsPerQuarterNote)).round());
 
@@ -105,7 +104,6 @@ class SequencerModel extends ChangeNotifier {
         await _audio.init();
       }
       _isPlaying = true;
-      // Start at step 0 and fire it immediately, then set periodic timer.
       _currentStep = 0;
       _fireAndAdvance();
       _stepTimer = Timer.periodic(_stepDuration, (_) => _tickStep());
@@ -125,22 +123,18 @@ class SequencerModel extends ChangeNotifier {
     notifyListeners();
   }
 
-  /// Timer callback — fire audio, highlight step, then advance.
   void _tickStep() {
     if (!_isPlaying) return;
     _fireAndAdvance();
   }
 
   void _fireAndAdvance() {
-    // Trigger all active tracks for the current step.
     for (int t = 0; t < kNumTracks; t++) {
       if (_steps[t][_currentStep]) {
         _audio.trigger(t);
       }
     }
-    // Notify UI to highlight this step.
     notifyListeners();
-    // Advance to next step (will be highlighted on the following tick).
     _currentStep = (_currentStep + 1) % kNumSteps;
   }
 
