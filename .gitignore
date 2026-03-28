@@ -45,3 +45,6 @@ app.*.map.json
 # Android local properties
 android/local.properties
 android/key.properties
+
+# Android Gradle build cache
+android/.gradle/
