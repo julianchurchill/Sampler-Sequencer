@@ -89,7 +89,7 @@ class _TrackLabel extends StatelessWidget {
       ),
       builder: (sheetCtx) => MultiProvider(
         providers: [
-          Provider.value(value: context.read<SequencerModel>()),
+          ChangeNotifierProvider.value(value: context.read<SequencerModel>()),
           ChangeNotifierProvider.value(value: context.read<SampleLibrary>()),
         ],
         child: _TrackSettingsSheet(trackIndex: trackIndex),
