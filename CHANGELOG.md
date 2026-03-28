@@ -5,6 +5,16 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [1.5.0] - 2026-03-28
+
+### Added
+- Per-track non-destructive sample trimming: TRIM button opens an editor sheet with a range slider to set start and end points; the original file is never modified
+- Trim state is persisted across app restarts
+- Active trim is indicated by the TRIM button lighting up in the track colour; the × button clears it
+
+### Changed
+- Audio players switched from SoundPool (`lowLatency`) to MediaPlayer (`mediaPlayer`) mode to enable seek() support required for trim playback
+
 ## [1.4.0] - 2026-03-28
 
 ### Added
