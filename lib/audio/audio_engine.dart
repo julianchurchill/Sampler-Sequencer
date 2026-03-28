@@ -288,10 +288,13 @@ class AudioEngine {
       _presetPaths.add(path);
     }
 
-    // One low-latency AudioPlayer per track.
+    // One AudioPlayer per track.
+    // Default mode (ExoPlayer) is used instead of PlayerMode.lowLatency
+    // (SoundPool) because SoundPool shares a stream pool across all players;
+    // hitting the maxStreams limit causes Android to silently stop the oldest
+    // stream, which can kill a sample on a different track.
     for (int i = 0; i < 4; i++) {
       final player = AudioPlayer();
-      await player.setPlayerMode(PlayerMode.lowLatency);
       await player.setReleaseMode(ReleaseMode.stop);
       _players.add(player);
     }
