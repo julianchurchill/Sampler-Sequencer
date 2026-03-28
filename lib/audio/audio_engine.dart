@@ -268,6 +268,10 @@ class AudioEngine {
 
   bool _ready = false;
 
+  /// Monotonically increasing counter per track. When a new trigger arrives
+  /// while a previous stop()→play() is in flight, the stale play() is skipped.
+  final List<int> _triggerGen = List.filled(4, 0);
+
   bool get isReady => _ready;
 
   String trackName(int track) => _trackNames[track];
@@ -324,11 +328,18 @@ class AudioEngine {
   }
 
   /// Trigger a one-shot hit on [track].
+  ///
+  /// Uses a generation counter so that if a newer trigger arrives while
+  /// stop() is still awaiting, the superseded trigger skips its play() call
+  /// and only the latest trigger actually starts the sample. This prevents
+  /// overlapping playback on the same track.
   Future<void> trigger(int track) async {
     if (!_ready) return;
+    final gen = ++_triggerGen[track];
     final path = _trackCustomPath[track] ?? _presetPaths[_trackPresetIndex[track]];
     try {
       await _players[track].stop();
+      if (_triggerGen[track] != gen) return; // superseded by a newer trigger
       await _players[track].play(DeviceFileSource(path));
     } catch (e) {
       debugPrint('AudioEngine trigger error: $e');
