@@ -9,6 +9,10 @@ import '../constants.dart';
 
 const _kPrefsSteps = 'sequencer_steps';
 const _kPrefsBpm = 'sequencer_bpm';
+// Per-track keys — append track index (0–3).
+const _kPrefsTrackPreset = 'track_preset_';
+const _kPrefsTrackCustomPath = 'track_custom_path_';
+const _kPrefsTrackCustomName = 'track_custom_name_';
 
 class SequencerModel extends ChangeNotifier {
   int _bpm = kDefaultBpm;
@@ -43,9 +47,9 @@ class SequencerModel extends ChangeNotifier {
   /// Call once after construction to restore previously saved state.
   Future<void> init() async {
     final prefs = await SharedPreferences.getInstance();
-    final stepsStr = prefs.getString(_kPrefsSteps);
-    final savedBpm = prefs.getInt(_kPrefsBpm);
 
+    // Steps
+    final stepsStr = prefs.getString(_kPrefsSteps);
     if (stepsStr != null) {
       final tracks = stepsStr.split('|');
       for (int t = 0; t < kNumTracks && t < tracks.length; t++) {
@@ -55,8 +59,24 @@ class SequencerModel extends ChangeNotifier {
       }
     }
 
+    // BPM
+    final savedBpm = prefs.getInt(_kPrefsBpm);
     if (savedBpm != null) {
       _bpm = savedBpm.clamp(kMinBpm, kMaxBpm);
+    }
+
+    // Track sample selections
+    for (int t = 0; t < kNumTracks; t++) {
+      final customPath = prefs.getString('$_kPrefsTrackCustomPath$t');
+      if (customPath != null) {
+        final customName = prefs.getString('$_kPrefsTrackCustomName$t') ?? customPath.split('/').last;
+        _audio.setCustomPathWithName(t, customPath, customName);
+      } else {
+        final presetIdx = prefs.getInt('$_kPrefsTrackPreset$t');
+        if (presetIdx != null && presetIdx >= 0 && presetIdx < kDrumPresets.length) {
+          _audio.setPreset(t, presetIdx);
+        }
+      }
     }
 
     notifyListeners();
@@ -64,11 +84,28 @@ class SequencerModel extends ChangeNotifier {
 
   void _save() {
     SharedPreferences.getInstance().then((prefs) {
+      // Steps
       final stepsStr = _steps
           .map((track) => track.map((s) => s ? '1' : '0').join())
           .join('|');
       prefs.setString(_kPrefsSteps, stepsStr);
+
+      // BPM
       prefs.setInt(_kPrefsBpm, _bpm);
+
+      // Track sample selections
+      for (int t = 0; t < kNumTracks; t++) {
+        final path = _audio.customPath(t);
+        if (path != null) {
+          prefs.setString('$_kPrefsTrackCustomPath$t', path);
+          prefs.setString('$_kPrefsTrackCustomName$t', _audio.trackName(t));
+          prefs.remove('$_kPrefsTrackPreset$t');
+        } else {
+          prefs.setInt('$_kPrefsTrackPreset$t', _audio.presetIndex(t));
+          prefs.remove('$_kPrefsTrackCustomPath$t');
+          prefs.remove('$_kPrefsTrackCustomName$t');
+        }
+      }
     });
   }
 
@@ -101,6 +138,7 @@ class SequencerModel extends ChangeNotifier {
   void loadPreset(int track, int presetIndex) {
     _audio.setPreset(track, presetIndex);
     notifyListeners();
+    _save();
   }
 
   Future<void> loadCustomSample(int track) async {
@@ -113,6 +151,7 @@ class SequencerModel extends ChangeNotifier {
       if (path != null) {
         _audio.setCustomPath(track, path);
         notifyListeners();
+        _save();
       }
     } catch (e) {
       debugPrint('File picker error: $e');
@@ -123,11 +162,13 @@ class SequencerModel extends ChangeNotifier {
   void loadCustomSample2(int track, String path, String name) {
     _audio.setCustomPathWithName(track, path, name);
     notifyListeners();
+    _save();
   }
 
   void clearCustomSample(int track) {
     _audio.clearCustomPath(track);
     notifyListeners();
+    _save();
   }
 
   void clearAllSteps() {

@@ -276,6 +276,8 @@ class AudioEngine {
 
   String trackName(int track) => _trackNames[track];
   bool hasCustomPath(int track) => _trackCustomPath[track] != null;
+  String? customPath(int track) => _trackCustomPath[track];
+  int presetIndex(int track) => _trackPresetIndex[track];
 
   Future<void> init() async {
     final tmpDir = await getTemporaryDirectory();
