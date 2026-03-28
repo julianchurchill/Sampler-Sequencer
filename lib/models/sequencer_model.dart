@@ -2,9 +2,13 @@ import 'dart:async';
 
 import 'package:file_picker/file_picker.dart';
 import 'package:flutter/foundation.dart';
+import 'package:shared_preferences/shared_preferences.dart';
 
 import '../audio/audio_engine.dart';
 import '../constants.dart';
+
+const _kPrefsSteps = 'sequencer_steps';
+const _kPrefsBpm = 'sequencer_bpm';
 
 class SequencerModel extends ChangeNotifier {
   int _bpm = kDefaultBpm;
@@ -34,6 +38,40 @@ class SequencerModel extends ChangeNotifier {
   bool hasCustomSample(int track) => _audio.hasCustomPath(track);
   String trackName(int track) => _audio.trackName(track);
 
+  // ---- Persistence ----
+
+  /// Call once after construction to restore previously saved state.
+  Future<void> init() async {
+    final prefs = await SharedPreferences.getInstance();
+    final stepsStr = prefs.getString(_kPrefsSteps);
+    final savedBpm = prefs.getInt(_kPrefsBpm);
+
+    if (stepsStr != null) {
+      final tracks = stepsStr.split('|');
+      for (int t = 0; t < kNumTracks && t < tracks.length; t++) {
+        for (int s = 0; s < kNumSteps && s < tracks[t].length; s++) {
+          _steps[t][s] = tracks[t][s] == '1';
+        }
+      }
+    }
+
+    if (savedBpm != null) {
+      _bpm = savedBpm.clamp(kMinBpm, kMaxBpm);
+    }
+
+    notifyListeners();
+  }
+
+  void _save() {
+    SharedPreferences.getInstance().then((prefs) {
+      final stepsStr = _steps
+          .map((track) => track.map((s) => s ? '1' : '0').join())
+          .join('|');
+      prefs.setString(_kPrefsSteps, stepsStr);
+      prefs.setInt(_kPrefsBpm, _bpm);
+    });
+  }
+
   // ---- Public actions ----
 
   Future<void> togglePlay() async {
@@ -47,11 +85,13 @@ class SequencerModel extends ChangeNotifier {
   void toggleStep(int track, int step) {
     _steps[track][step] = !_steps[track][step];
     notifyListeners();
+    _save();
   }
 
   void setBpm(int bpm) {
     _bpm = bpm.clamp(kMinBpm, kMaxBpm);
     notifyListeners();
+    _save();
     if (_isPlaying) {
       _stepTimer?.cancel();
       _stepTimer = Timer.periodic(_stepDuration, (_) => _tickStep());
@@ -95,6 +135,7 @@ class SequencerModel extends ChangeNotifier {
       row.fillRange(0, row.length, false);
     }
     notifyListeners();
+    _save();
   }
 
   // ---- Private helpers ----
