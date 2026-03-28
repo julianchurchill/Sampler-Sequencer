@@ -13,6 +13,7 @@ const _kPrefsBpm = 'sequencer_bpm';
 const _kPrefsTrackPreset = 'track_preset_';
 const _kPrefsTrackCustomPath = 'track_custom_path_';
 const _kPrefsTrackCustomName = 'track_custom_name_';
+const _kPrefsTrackVolume = 'track_volume_';
 
 class SequencerModel extends ChangeNotifier {
   int _bpm = kDefaultBpm;
@@ -41,6 +42,7 @@ class SequencerModel extends ChangeNotifier {
   bool stepEnabled(int track, int step) => _steps[track][step];
   bool hasCustomSample(int track) => _audio.hasCustomPath(track);
   String trackName(int track) => _audio.trackName(track);
+  double trackVolume(int track) => _audio.trackVolume(track);
 
   // ---- Persistence ----
 
@@ -65,7 +67,7 @@ class SequencerModel extends ChangeNotifier {
       _bpm = savedBpm.clamp(kMinBpm, kMaxBpm);
     }
 
-    // Track sample selections
+    // Track sample selections and volumes
     for (int t = 0; t < kNumTracks; t++) {
       final customPath = prefs.getString('$_kPrefsTrackCustomPath$t');
       if (customPath != null) {
@@ -77,6 +79,8 @@ class SequencerModel extends ChangeNotifier {
           _audio.setPreset(t, presetIdx);
         }
       }
+      final vol = prefs.getDouble('$_kPrefsTrackVolume$t');
+      if (vol != null) await _audio.setTrackVolume(t, vol);
     }
 
     notifyListeners();
@@ -93,7 +97,7 @@ class SequencerModel extends ChangeNotifier {
       // BPM
       prefs.setInt(_kPrefsBpm, _bpm);
 
-      // Track sample selections
+      // Track sample selections and volumes
       for (int t = 0; t < kNumTracks; t++) {
         final path = _audio.customPath(t);
         if (path != null) {
@@ -105,6 +109,7 @@ class SequencerModel extends ChangeNotifier {
           prefs.remove('$_kPrefsTrackCustomPath$t');
           prefs.remove('$_kPrefsTrackCustomName$t');
         }
+        prefs.setDouble('$_kPrefsTrackVolume$t', _audio.trackVolume(t));
       }
     });
   }
@@ -133,6 +138,12 @@ class SequencerModel extends ChangeNotifier {
       _stepTimer?.cancel();
       _stepTimer = Timer.periodic(_stepDuration, (_) => _tickStep());
     }
+  }
+
+  Future<void> setTrackVolume(int track, double volume) async {
+    await _audio.setTrackVolume(track, volume);
+    notifyListeners();
+    _save();
   }
 
   void loadPreset(int track, int presetIndex) {

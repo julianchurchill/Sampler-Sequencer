@@ -258,6 +258,9 @@ class AudioEngine {
   /// Per-track custom file override (null = use preset).
   final List<String?> _trackCustomPath = List.filled(4, null);
 
+  /// Per-track volume (0.0–1.0, default 1.0).
+  final List<double> _trackVolume = List.filled(4, 1.0);
+
   /// Per-track display name shown in the UI.
   final List<String> _trackNames = [
     kDrumPresets[kDefaultPresetIndices[0]].name,
@@ -278,6 +281,12 @@ class AudioEngine {
   bool hasCustomPath(int track) => _trackCustomPath[track] != null;
   String? customPath(int track) => _trackCustomPath[track];
   int presetIndex(int track) => _trackPresetIndex[track];
+  double trackVolume(int track) => _trackVolume[track];
+
+  Future<void> setTrackVolume(int track, double volume) async {
+    _trackVolume[track] = volume.clamp(0.0, 1.0);
+    await _players[track].setVolume(_trackVolume[track]);
+  }
 
   Future<void> init() async {
     final tmpDir = await getTemporaryDirectory();

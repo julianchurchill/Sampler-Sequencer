@@ -42,6 +42,9 @@ class _TrackLabel extends StatelessWidget {
     final name = context.select<SequencerModel, String>(
       (m) => m.trackName(trackIndex),
     );
+    final volume = context.select<SequencerModel, double>(
+      (m) => m.trackVolume(trackIndex),
+    );
     final color = kTrackColors[trackIndex];
 
     return SizedBox(
@@ -63,7 +66,7 @@ class _TrackLabel extends StatelessWidget {
                 letterSpacing: 0.8,
               ),
             ),
-            const SizedBox(height: 4),
+            const SizedBox(height: 2),
             Row(
               children: [
                 _SmallButton(
@@ -81,6 +84,25 @@ class _TrackLabel extends StatelessWidget {
                   ),
                 ],
               ],
+            ),
+            const SizedBox(height: 2),
+            SliderTheme(
+              data: SliderTheme.of(context).copyWith(
+                trackHeight: 2,
+                thumbShape: const RoundSliderThumbShape(enabledThumbRadius: 5),
+                overlayShape: const RoundSliderOverlayShape(overlayRadius: 10),
+                thumbColor: color,
+                activeTrackColor: color,
+                inactiveTrackColor: color.withValues(alpha: 0.25),
+                overlayColor: color.withValues(alpha: 0.15),
+              ),
+              child: Slider(
+                value: volume,
+                min: 0.0,
+                max: 1.0,
+                onChanged: (v) =>
+                    context.read<SequencerModel>().setTrackVolume(trackIndex, v),
+              ),
             ),
           ],
         ),
