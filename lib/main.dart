@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:provider/provider.dart';
 
+import 'audio/sample_library.dart';
 import 'constants.dart';
 import 'models/sequencer_model.dart';
 import 'screens/sequencer_screen.dart';
@@ -21,8 +22,11 @@ class SamplerApp extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    return ChangeNotifierProvider(
-      create: (_) => SequencerModel(),
+    return MultiProvider(
+      providers: [
+        ChangeNotifierProvider(create: (_) => SequencerModel()),
+        ChangeNotifierProvider(create: (_) => SampleLibrary()..init()),
+      ],
       child: MaterialApp(
         title: 'Sampler Sequencer',
         debugShowCheckedModeBanner: false,

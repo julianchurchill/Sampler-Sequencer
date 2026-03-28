@@ -302,13 +302,19 @@ class AudioEngine {
     _trackNames[track] = kDrumPresets[presetIndex].name;
   }
 
-  /// Override a track with a user-picked file.
+  /// Override a track with a user-picked file (name derived from filename).
   void setCustomPath(int track, String path) {
     _trackCustomPath[track] = path;
     final filename = path.split('/').last;
     _trackNames[track] = filename.contains('.')
         ? filename.substring(0, filename.lastIndexOf('.'))
         : filename;
+  }
+
+  /// Override a track with a known path and explicit display [name].
+  void setCustomPathWithName(int track, String path, String name) {
+    _trackCustomPath[track] = path;
+    _trackNames[track] = name;
   }
 
   /// Clear custom file override; track reverts to its current preset.
