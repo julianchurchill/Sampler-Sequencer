@@ -6,7 +6,7 @@ import '../models/sequencer_model.dart';
 
 /// Bottom sheet for non-destructive trim of the sample assigned to [trackIndex].
 /// Presents a RangeSlider over the full sample duration and shows the selected
-/// start / end times.
+/// start / end times. A play button previews the trimmed region live.
 class TrimEditorSheet extends StatefulWidget {
   const TrimEditorSheet({super.key, required this.trackIndex});
 
@@ -19,6 +19,7 @@ class TrimEditorSheet extends StatefulWidget {
 class _TrimEditorSheetState extends State<TrimEditorSheet> {
   Duration? _duration;
   bool _loading = true;
+  bool _previewing = false;
 
   // Normalised 0.0–1.0 values driven by the RangeSlider.
   double _startFrac = 0.0;
@@ -28,6 +29,15 @@ class _TrimEditorSheetState extends State<TrimEditorSheet> {
   void initState() {
     super.initState();
     _loadDuration();
+  }
+
+  @override
+  void dispose() {
+    // Stop any ongoing preview when the sheet closes.
+    if (_previewing) {
+      context.read<SequencerModel>().stopTrack(widget.trackIndex);
+    }
+    super.dispose();
   }
 
   Future<void> _loadDuration() async {
@@ -51,6 +61,28 @@ class _TrimEditorSheetState extends State<TrimEditorSheet> {
     final s = ms ~/ 1000;
     final frac = (ms % 1000) ~/ 10;
     return '${s.toString().padLeft(1, '0')}.${frac.toString().padLeft(2, '0')}s';
+  }
+
+  Future<void> _togglePreview() async {
+    final model = context.read<SequencerModel>();
+    final dur = _duration;
+    if (dur == null) return;
+
+    if (_previewing) {
+      await model.stopTrack(widget.trackIndex);
+      if (mounted) setState(() => _previewing = false);
+    } else {
+      final startMs = (_startFrac * dur.inMilliseconds).round();
+      final endMs = (_endFrac * dur.inMilliseconds).round();
+      final start = Duration(milliseconds: startMs);
+      final end = endMs < dur.inMilliseconds ? Duration(milliseconds: endMs) : null;
+
+      setState(() => _previewing = true);
+      await model.previewTrim(widget.trackIndex, start, end);
+
+      // Auto-reset the button once playback finishes.
+      if (mounted) setState(() => _previewing = false);
+    }
   }
 
   void _applyTrim() {
@@ -133,6 +165,11 @@ class _TrimEditorSheetState extends State<TrimEditorSheet> {
               child: RangeSlider(
                 values: RangeValues(_startFrac, _endFrac),
                 onChanged: (v) {
+                  // Stop any active preview when the user adjusts the range.
+                  if (_previewing) {
+                    context.read<SequencerModel>().stopTrack(widget.trackIndex);
+                    _previewing = false;
+                  }
                   setState(() {
                     _startFrac = v.start;
                     _endFrac = v.end;
@@ -141,20 +178,36 @@ class _TrimEditorSheetState extends State<TrimEditorSheet> {
               ),
             ),
 
-            // Total duration label
-            Center(
-              child: Text(
-                'Total: ${_fmt(dur)}',
-                style: const TextStyle(color: Colors.white54, fontSize: 11),
-              ),
+            // Total duration label + preview button
+            Row(
+              mainAxisAlignment: MainAxisAlignment.spaceBetween,
+              children: [
+                Text(
+                  'Total: ${_fmt(dur)}',
+                  style: const TextStyle(color: Colors.white54, fontSize: 11),
+                ),
+                IconButton(
+                  onPressed: _togglePreview,
+                  tooltip: _previewing ? 'Stop preview' : 'Preview trimmed sample',
+                  color: color,
+                  icon: Icon(
+                    _previewing ? Icons.stop_circle_outlined : Icons.play_circle_outline,
+                  ),
+                ),
+              ],
             ),
-            const SizedBox(height: 16),
+
+            const SizedBox(height: 8),
 
             Row(
               mainAxisAlignment: MainAxisAlignment.end,
               children: [
                 TextButton(
                   onPressed: () {
+                    if (_previewing) {
+                      context.read<SequencerModel>().stopTrack(widget.trackIndex);
+                      _previewing = false;
+                    }
                     setState(() {
                       _startFrac = 0.0;
                       _endFrac = 1.0;

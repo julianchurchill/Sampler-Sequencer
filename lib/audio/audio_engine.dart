@@ -386,6 +386,53 @@ class AudioEngine {
     }
   }
 
+  /// Preview the sample on [track] using the supplied [start] and [end]
+  /// positions (not the stored trim values). Intended for the trim editor UI.
+  Future<void> previewTrim(int track, Duration start, Duration? end) async {
+    if (!_ready) return;
+    final gen = ++_triggerGen[track];
+    _trimTimers[track]?.cancel();
+    _trimTimers[track] = null;
+    final path = _trackCustomPath[track] ?? _presetPaths[_trackPresetIndex[track]];
+    try {
+      await _players[track].stop();
+      if (_triggerGen[track] != gen) return;
+      await _players[track].setSource(DeviceFileSource(path));
+      if (_triggerGen[track] != gen) return;
+      await _players[track].setVolume(_trackVolume[track]);
+      if (_triggerGen[track] != gen) return;
+      await _players[track].seek(start);
+      if (_triggerGen[track] != gen) return;
+      await _players[track].resume();
+      if (_triggerGen[track] != gen) return;
+      if (end != null) {
+        final playDuration = end - start;
+        if (playDuration > Duration.zero) {
+          _trimTimers[track] = Timer(playDuration, () {
+            if (_triggerGen[track] == gen) {
+              _players[track].stop();
+            }
+          });
+        }
+      }
+    } catch (e) {
+      debugPrint('AudioEngine previewTrim error: $e');
+    }
+  }
+
+  /// Stop playback on [track] (used to cancel a trim preview).
+  Future<void> stopTrack(int track) async {
+    if (!_ready) return;
+    ++_triggerGen[track]; // cancel any in-flight trim timer
+    _trimTimers[track]?.cancel();
+    _trimTimers[track] = null;
+    try {
+      await _players[track].stop();
+    } catch (e) {
+      debugPrint('AudioEngine stopTrack error: $e');
+    }
+  }
+
   /// Trigger a one-shot hit on [track].
   ///
   /// Uses a generation counter so that if a newer trigger arrives while

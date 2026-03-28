@@ -214,6 +214,9 @@ class SequencerModel extends ChangeNotifier {
   }
 
   Future<Duration?> getTrackDuration(int track) => _audio.getTrackDuration(track);
+  Future<void> previewTrim(int track, Duration start, Duration? end) =>
+      _audio.previewTrim(track, start, end);
+  Future<void> stopTrack(int track) => _audio.stopTrack(track);
 
   void clearAllSteps() {
     for (final row in _steps) {
