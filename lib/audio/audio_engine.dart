@@ -297,7 +297,7 @@ class AudioEngine {
       final player = AudioPlayer();
       await player.setPlayerMode(PlayerMode.lowLatency);
       await player.setReleaseMode(ReleaseMode.stop);
-      await player.setAudioContext(const AudioContext(
+      await player.setAudioContext(AudioContext(
         android: AudioContextAndroid(audioFocus: AudioFocus.none),
       ));
       _players.add(player);
