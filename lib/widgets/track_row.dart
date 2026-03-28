@@ -8,6 +8,7 @@ import '../audio/sample_library.dart';
 import '../constants.dart';
 import '../models/sequencer_model.dart';
 import 'step_button.dart';
+import 'trim_editor_sheet.dart';
 
 /// One track row: label + load button on the left, 16 step pads on the right.
 class TrackRow extends StatelessWidget {
@@ -44,6 +45,9 @@ class _TrackLabel extends StatelessWidget {
     );
     final volume = context.select<SequencerModel, double>(
       (m) => m.trackVolume(trackIndex),
+    );
+    final hasTrim = context.select<SequencerModel, bool>(
+      (m) => m.hasTrim(trackIndex),
     );
     final color = kTrackColors[trackIndex];
 
@@ -86,6 +90,25 @@ class _TrackLabel extends StatelessWidget {
               ],
             ),
             const SizedBox(height: 2),
+            Row(
+              children: [
+                _SmallButton(
+                  label: 'TRIM',
+                  color: hasTrim ? color : kTextDim,
+                  onTap: () => _showTrimEditor(context),
+                ),
+                if (hasTrim) ...[
+                  const SizedBox(width: 4),
+                  _SmallButton(
+                    label: '×',
+                    color: kTextDim,
+                    onTap: () =>
+                        context.read<SequencerModel>().clearTrim(trackIndex),
+                  ),
+                ],
+              ],
+            ),
+            const SizedBox(height: 2),
             SliderTheme(
               data: SliderTheme.of(context).copyWith(
                 trackHeight: 2,
@@ -106,6 +129,21 @@ class _TrackLabel extends StatelessWidget {
             ),
           ],
         ),
+      ),
+    );
+  }
+
+  void _showTrimEditor(BuildContext context) {
+    showModalBottomSheet<void>(
+      context: context,
+      backgroundColor: kPanelColor,
+      isScrollControlled: true,
+      shape: const RoundedRectangleBorder(
+        borderRadius: BorderRadius.vertical(top: Radius.circular(12)),
+      ),
+      builder: (sheetCtx) => Provider.value(
+        value: context.read<SequencerModel>(),
+        child: TrimEditorSheet(trackIndex: trackIndex),
       ),
     );
   }

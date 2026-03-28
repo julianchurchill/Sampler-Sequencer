@@ -14,6 +14,8 @@ const _kPrefsTrackPreset = 'track_preset_';
 const _kPrefsTrackCustomPath = 'track_custom_path_';
 const _kPrefsTrackCustomName = 'track_custom_name_';
 const _kPrefsTrackVolume = 'track_volume_';
+const _kPrefsTrackTrimStart = 'track_trim_start_'; // milliseconds
+const _kPrefsTrackTrimEnd = 'track_trim_end_';     // milliseconds, -1 = none
 
 class SequencerModel extends ChangeNotifier {
   int _bpm = kDefaultBpm;
@@ -43,6 +45,9 @@ class SequencerModel extends ChangeNotifier {
   bool hasCustomSample(int track) => _audio.hasCustomPath(track);
   String trackName(int track) => _audio.trackName(track);
   double trackVolume(int track) => _audio.trackVolume(track);
+  bool hasTrim(int track) => _audio.hasTrim(track);
+  Duration trimStart(int track) => _audio.trimStart(track);
+  Duration? trimEnd(int track) => _audio.trimEnd(track);
 
   // ---- Persistence ----
 
@@ -81,6 +86,17 @@ class SequencerModel extends ChangeNotifier {
       }
       final vol = prefs.getDouble('$_kPrefsTrackVolume$t');
       if (vol != null) await _audio.setTrackVolume(t, vol);
+      final trimStartMs = prefs.getInt('$_kPrefsTrackTrimStart$t');
+      final trimEndMs = prefs.getInt('$_kPrefsTrackTrimEnd$t');
+      if (trimStartMs != null || trimEndMs != null) {
+        _audio.setTrim(
+          t,
+          Duration(milliseconds: trimStartMs ?? 0),
+          (trimEndMs != null && trimEndMs >= 0)
+              ? Duration(milliseconds: trimEndMs)
+              : null,
+        );
+      }
     }
 
     notifyListeners();
@@ -110,6 +126,9 @@ class SequencerModel extends ChangeNotifier {
           prefs.remove('$_kPrefsTrackCustomName$t');
         }
         prefs.setDouble('$_kPrefsTrackVolume$t', _audio.trackVolume(t));
+        prefs.setInt('$_kPrefsTrackTrimStart$t', _audio.trimStart(t).inMilliseconds);
+        final end = _audio.trimEnd(t);
+        prefs.setInt('$_kPrefsTrackTrimEnd$t', end != null ? end.inMilliseconds : -1);
       }
     });
   }
@@ -181,6 +200,23 @@ class SequencerModel extends ChangeNotifier {
     notifyListeners();
     _save();
   }
+
+  void setTrim(int track, Duration start, Duration? end) {
+    _audio.setTrim(track, start, end);
+    notifyListeners();
+    _save();
+  }
+
+  void clearTrim(int track) {
+    _audio.clearTrim(track);
+    notifyListeners();
+    _save();
+  }
+
+  Future<Duration?> getTrackDuration(int track) => _audio.getTrackDuration(track);
+  Future<void> previewTrim(int track, Duration start, Duration? end) =>
+      _audio.previewTrim(track, start, end);
+  Future<void> stopTrack(int track) => _audio.stopTrack(track);
 
   void clearAllSteps() {
     for (final row in _steps) {

@@ -1,3 +1,4 @@
+import 'dart:async';
 import 'dart:io';
 import 'dart:math' as math;
 import 'dart:typed_data';
@@ -261,6 +262,15 @@ class AudioEngine {
   /// Per-track volume (0.0–1.0, default 1.0).
   final List<double> _trackVolume = List.filled(4, 1.0);
 
+  /// Per-track trim start (default Duration.zero).
+  final List<Duration> _trimStart = List.filled(4, Duration.zero);
+
+  /// Per-track trim end (null = play to end of sample).
+  final List<Duration?> _trimEnd = List.filled(4, null);
+
+  /// Timers used to stop playback at trim end.
+  final List<Timer?> _trimTimers = List.filled(4, null);
+
   /// Per-track display name shown in the UI.
   final List<String> _trackNames = [
     kDrumPresets[kDefaultPresetIndices[0]].name,
@@ -282,6 +292,10 @@ class AudioEngine {
   String? customPath(int track) => _trackCustomPath[track];
   int presetIndex(int track) => _trackPresetIndex[track];
   double trackVolume(int track) => _trackVolume[track];
+  Duration trimStart(int track) => _trimStart[track];
+  Duration? trimEnd(int track) => _trimEnd[track];
+  bool hasTrim(int track) =>
+      _trimStart[track] != Duration.zero || _trimEnd[track] != null;
 
   Future<void> setTrackVolume(int track, double volume) async {
     _trackVolume[track] = volume.clamp(0.0, 1.0);
@@ -299,14 +313,14 @@ class AudioEngine {
       _presetPaths.add(path);
     }
 
-    // One low-latency AudioPlayer per track.
-    // AudioFocus.none prevents each player requesting AUDIOFOCUS_GAIN, which
-    // would cause Android to notify other players in the app to stop — the
-    // root cause of cross-track sample cutting. With focus management
-    // disabled, all 4 tracks play independently.
+    // One MediaPlayer AudioPlayer per track.
+    // MediaPlayer (mediaPlayer mode) supports seek(), which is required for
+    // non-destructive trim playback. AudioFocus.none prevents each player
+    // requesting AUDIOFOCUS_GAIN, which would cause Android to notify other
+    // in-app players to stop — all 4 tracks play independently.
     for (int i = 0; i < 4; i++) {
       final player = AudioPlayer();
-      await player.setPlayerMode(PlayerMode.lowLatency);
+      await player.setPlayerMode(PlayerMode.mediaPlayer);
       await player.setReleaseMode(ReleaseMode.stop);
       await player.setAudioContext(AudioContext(
         android: AudioContextAndroid(audioFocus: AndroidAudioFocus.none),
@@ -345,26 +359,134 @@ class AudioEngine {
     _trackNames[track] = kDrumPresets[_trackPresetIndex[track]].name;
   }
 
-  /// Trigger a one-shot hit on [track].
-  ///
-  /// Uses a generation counter so that if a newer trigger arrives while
-  /// stop() is still awaiting, the superseded trigger skips its play() call
-  /// and only the latest trigger actually starts the sample. This prevents
-  /// overlapping playback on the same track.
-  Future<void> trigger(int track) async {
+  /// Set trim points for [track]. Pass [start] and optional [end].
+  void setTrim(int track, Duration start, Duration? end) {
+    _trimStart[track] = start;
+    _trimEnd[track] = end;
+  }
+
+  /// Clear trim for [track]; sample plays from beginning to end.
+  void clearTrim(int track) {
+    _trimStart[track] = Duration.zero;
+    _trimEnd[track] = null;
+  }
+
+  /// Returns the duration of the sample currently assigned to [track],
+  /// or null if it cannot be determined.
+  Future<Duration?> getTrackDuration(int track) async {
+    if (!_ready) return null;
+    final path = _trackCustomPath[track] ?? _presetPaths[_trackPresetIndex[track]];
+    try {
+      // Probe duration by setting source without playing.
+      await _players[track].setSource(DeviceFileSource(path));
+      return await _players[track].getDuration();
+    } catch (e) {
+      debugPrint('AudioEngine getDuration error: $e');
+      return null;
+    }
+  }
+
+  /// Preview the sample on [track] using the supplied [start] and [end]
+  /// positions (not the stored trim values). Intended for the trim editor UI.
+  Future<void> previewTrim(int track, Duration start, Duration? end) async {
     if (!_ready) return;
     final gen = ++_triggerGen[track];
+    _trimTimers[track]?.cancel();
+    _trimTimers[track] = null;
     final path = _trackCustomPath[track] ?? _presetPaths[_trackPresetIndex[track]];
     try {
       await _players[track].stop();
-      if (_triggerGen[track] != gen) return; // superseded by a newer trigger
-      await _players[track].play(DeviceFileSource(path));
+      if (_triggerGen[track] != gen) return;
+      await _players[track].setSource(DeviceFileSource(path));
+      if (_triggerGen[track] != gen) return;
+      await _players[track].setVolume(_trackVolume[track]);
+      if (_triggerGen[track] != gen) return;
+      await _players[track].seek(start);
+      if (_triggerGen[track] != gen) return;
+      await _players[track].resume();
+      if (_triggerGen[track] != gen) return;
+      if (end != null) {
+        final playDuration = end - start;
+        if (playDuration > Duration.zero) {
+          _trimTimers[track] = Timer(playDuration, () {
+            if (_triggerGen[track] == gen) {
+              _players[track].stop();
+            }
+          });
+        }
+      }
+    } catch (e) {
+      debugPrint('AudioEngine previewTrim error: $e');
+    }
+  }
+
+  /// Stop playback on [track] (used to cancel a trim preview).
+  Future<void> stopTrack(int track) async {
+    if (!_ready) return;
+    ++_triggerGen[track]; // cancel any in-flight trim timer
+    _trimTimers[track]?.cancel();
+    _trimTimers[track] = null;
+    try {
+      await _players[track].stop();
+    } catch (e) {
+      debugPrint('AudioEngine stopTrack error: $e');
+    }
+  }
+
+  /// Trigger a one-shot hit on [track].
+  ///
+  /// Uses a generation counter so that if a newer trigger arrives while
+  /// an async operation is in flight, the stale operation is abandoned.
+  /// When trim points are set, the sample is seeked to [trimStart] before
+  /// playback and a timer fires [stop()] at [trimEnd].
+  Future<void> trigger(int track) async {
+    if (!_ready) return;
+    final gen = ++_triggerGen[track];
+    _trimTimers[track]?.cancel();
+    _trimTimers[track] = null;
+    final path = _trackCustomPath[track] ?? _presetPaths[_trackPresetIndex[track]];
+    try {
+      final start = _trimStart[track];
+      final end = _trimEnd[track];
+      final trimmed = start != Duration.zero || end != null;
+
+      await _players[track].stop();
+      if (_triggerGen[track] != gen) return;
+
+      if (trimmed) {
+        await _players[track].setSource(DeviceFileSource(path));
+        if (_triggerGen[track] != gen) return;
+        await _players[track].setVolume(_trackVolume[track]);
+        if (_triggerGen[track] != gen) return;
+        await _players[track].seek(start);
+        if (_triggerGen[track] != gen) return;
+        await _players[track].resume();
+        if (_triggerGen[track] != gen) return;
+        if (end != null) {
+          final playDuration = end - start;
+          if (playDuration > Duration.zero) {
+            _trimTimers[track] = Timer(playDuration, () {
+              if (_triggerGen[track] == gen) {
+                _players[track].stop();
+              }
+            });
+          }
+        }
+      } else {
+        await _players[track].play(
+          DeviceFileSource(path),
+          volume: _trackVolume[track],
+        );
+      }
     } catch (e) {
       debugPrint('AudioEngine trigger error: $e');
     }
   }
 
   Future<void> dispose() async {
+    for (final t in _trimTimers) {
+      t?.cancel();
+    }
     for (final p in _players) {
       await p.dispose();
     }
