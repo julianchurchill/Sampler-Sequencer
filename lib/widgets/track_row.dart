@@ -40,40 +40,42 @@ class _TrackLabel extends StatelessWidget {
     final name = context.select<SequencerModel, String>(
       (m) => m.trackName(trackIndex),
     );
-    final hasCustom = context.select<SequencerModel, bool>(
-      (m) => m.hasCustomSample(trackIndex),
-    );
-    final hasTrim = context.select<SequencerModel, bool>(
-      (m) => m.hasTrim(trackIndex),
+    final isMuted = context.select<SequencerModel, bool>(
+      (m) => m.isMuted(trackIndex),
     );
     final color = kTrackColors[trackIndex];
-    // Tint the settings button in the track colour when any customisation is active.
-    final buttonColor = (hasCustom || hasTrim) ? color : kTextDim;
 
-    return GestureDetector(
-      onTap: () => _showSettings(context),
-      child: SizedBox(
-        width: 72,
-        child: Padding(
-          padding: const EdgeInsets.symmetric(horizontal: 4),
-          child: Row(
-            children: [
-              Expanded(
+    return SizedBox(
+      width: 72,
+      child: Padding(
+        padding: const EdgeInsets.symmetric(horizontal: 4),
+        child: Row(
+          children: [
+            Expanded(
+              child: GestureDetector(
+                onTap: () => _showSettings(context),
                 child: Text(
                   name,
                   maxLines: 2,
                   overflow: TextOverflow.ellipsis,
                   style: TextStyle(
-                    color: color,
+                    color: isMuted ? kTextDim : color,
                     fontSize: 11,
                     fontWeight: FontWeight.w800,
                     letterSpacing: 0.8,
                   ),
                 ),
               ),
-              Icon(Icons.tune, size: 18, color: buttonColor),
-            ],
-          ),
+            ),
+            GestureDetector(
+              onTap: () => context.read<SequencerModel>().toggleMute(trackIndex),
+              child: Icon(
+                isMuted ? Icons.volume_off : Icons.volume_up,
+                size: 18,
+                color: isMuted ? kTextDim : color,
+              ),
+            ),
+          ],
         ),
       ),
     );
