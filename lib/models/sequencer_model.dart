@@ -267,6 +267,7 @@ class SequencerModel extends ChangeNotifier {
     _stepTimer = null;
     _isPlaying = false;
     _currentStep = -1;
+    _audio.stopAll();
     notifyListeners();
   }
 
