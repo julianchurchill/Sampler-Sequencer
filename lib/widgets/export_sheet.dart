@@ -52,11 +52,9 @@ class _ExportSheetState extends State<ExportSheet> {
       });
 
       // Share the file via the OS share sheet.
-      await SharePlus.instance.share(
-        ShareParams(
-          files: [XFile(outputPath, mimeType: 'audio/wav')],
-          subject: 'Sampler Sequencer export',
-        ),
+      await Share.shareXFiles(
+        [XFile(outputPath, mimeType: 'audio/wav')],
+        subject: 'Sampler Sequencer export',
       );
     } catch (e) {
       if (mounted) {
