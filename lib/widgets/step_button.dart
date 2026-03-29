@@ -25,7 +25,7 @@ class StepButton extends StatelessWidget {
       shape: const RoundedRectangleBorder(
         borderRadius: BorderRadius.vertical(top: Radius.circular(12)),
       ),
-      builder: (sheetCtx) => Provider.value(
+      builder: (sheetCtx) => ChangeNotifierProvider.value(
         value: context.read<SequencerModel>(),
         child: PadConfigSheet(trackIndex: trackIndex, stepIndex: stepIndex),
       ),
@@ -42,6 +42,9 @@ class StepButton extends StatelessWidget {
     );
     final hasNonDefault = context.select<SequencerModel, bool>(
       (m) => m.hasNonDefaultStepSettings(trackIndex, stepIndex),
+    );
+    final velocity = context.select<SequencerModel, double>(
+      (m) => m.stepVelocity(trackIndex, stepIndex),
     );
 
     final trackColor = kTrackColors[trackIndex];
@@ -82,19 +85,28 @@ class StepButton extends StatelessWidget {
               : null,
         ),
         child: hasNonDefault
-            ? Align(
-                alignment: Alignment.bottomCenter,
-                child: Padding(
-                  padding: const EdgeInsets.only(bottom: 3),
-                  child: Container(
-                    width: 4,
-                    height: 4,
-                    decoration: BoxDecoration(
-                      color: Colors.white.withValues(alpha: isActive ? 0.75 : 0.45),
-                      shape: BoxShape.circle,
-                    ),
-                  ),
-                ),
+            ? LayoutBuilder(
+                builder: (_, constraints) {
+                  final barHeight =
+                      (constraints.maxHeight * velocity - 4).clamp(0.0, constraints.maxHeight - 4);
+                  return Stack(
+                    fit: StackFit.expand,
+                    children: [
+                      Positioned(
+                        left: 2,
+                        bottom: 2,
+                        width: 3,
+                        height: barHeight,
+                        child: Container(
+                          decoration: BoxDecoration(
+                            color: Colors.white.withValues(alpha: isActive ? 0.75 : 0.45),
+                            borderRadius: BorderRadius.circular(1.5),
+                          ),
+                        ),
+                      ),
+                    ],
+                  );
+                },
               )
             : null,
       ),
