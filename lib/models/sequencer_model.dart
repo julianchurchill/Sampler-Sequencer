@@ -40,8 +40,10 @@ class SequencerModel extends ChangeNotifier {
     (_) => List.filled(kNumSteps, kDefaultStepVelocity),
   );
 
-  final AudioEngine _audio = AudioEngine();
+  late final AudioEngine _audio;
   Timer? _stepTimer;
+
+  SequencerModel({AudioEngine? audio}) : _audio = audio ?? AudioEngine();
 
   // ---- Getters ----
 
@@ -301,7 +303,10 @@ class SequencerModel extends ChangeNotifier {
 
   // ---- Private helpers ----
 
-  Duration get _stepDuration =>
+  Duration get _stepDuration => stepDuration;
+
+  @visibleForTesting
+  Duration get stepDuration =>
       Duration(microseconds: (60000000 / (_bpm * kStepsPerQuarterNote)).round());
 
   Future<void> _play() async {

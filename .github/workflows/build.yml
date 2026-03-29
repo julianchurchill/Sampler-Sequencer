@@ -29,6 +29,9 @@ jobs:
       - name: Flutter pub get
         run: flutter pub get
 
+      - name: Run tests
+        run: flutter test --no-pub
+
       - name: Build APK
         run: flutter build apk --release
 

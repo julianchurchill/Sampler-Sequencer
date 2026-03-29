@@ -5,6 +5,18 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [2.1.0] - 2026-03-29
+
+### Added
+- Unit test suite: 30+ tests covering constants, `SequencerModel` logic (BPM clamping, step toggling, velocity, clear), and DSP utilities (WAV header, envelope, drum generators)
+- `mocktail` dev dependency for mock-based testing without code generation
+- `scripts/pre-commit.sh` and `scripts/install-hooks.sh` — run `sh scripts/install-hooks.sh` once after cloning to block commits when tests fail
+- `flutter test` step added to CI so tests must pass before every APK build
+
+### Changed
+- DSP functions (`buildWav`, `dspEnv`, drum generators) extracted from `audio_engine.dart` into `lib/audio/dsp_utils.dart` so they are importable in tests
+- `SequencerModel` now accepts an optional `AudioEngine` constructor parameter for dependency injection in tests; production behaviour is unchanged
+
 ## [2.0.0] - 2026-03-29
 
 ### Added
