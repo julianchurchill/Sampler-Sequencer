@@ -8,7 +8,7 @@ class AppAudioRecorder {
 
   Future<void> start(String path) => _recorder.start(
         const RecordConfig(
-          encoder: AudioEncoder.aacLc,
+          encoder: AudioEncoder.wav,
           sampleRate: 44100,
           numChannels: 1,
         ),

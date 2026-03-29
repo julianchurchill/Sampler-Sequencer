@@ -1,7 +1,7 @@
 name: sampler_sequencer
 description: A hardware-style drum machine and step sequencer app.
 publish_to: 'none'
-version: 1.6.0+13
+version: 1.7.0+14
 
 environment:
   sdk: '>=3.0.0 <4.0.0'
@@ -16,6 +16,7 @@ dependencies:
   path_provider: ^2.1.0
   record: ^6.0.0
   shared_preferences: ^2.0.0
+  share_plus: ^10.0.0
 
 dev_dependencies:
   flutter_test:

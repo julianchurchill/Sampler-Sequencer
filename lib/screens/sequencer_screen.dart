@@ -1,7 +1,10 @@
 import 'package:flutter/material.dart';
 import 'package:package_info_plus/package_info_plus.dart';
+import 'package:provider/provider.dart';
 
 import '../constants.dart';
+import '../models/sequencer_model.dart';
+import '../widgets/export_sheet.dart';
 import '../widgets/track_row.dart';
 import '../widgets/transport_bar.dart';
 
@@ -22,6 +25,21 @@ class _SequencerScreenState extends State<SequencerScreen> {
     PackageInfo.fromPlatform().then((info) {
       if (mounted) setState(() => _version = 'v${info.version}');
     });
+  }
+
+  void _showExport(BuildContext context) {
+    showModalBottomSheet<void>(
+      context: context,
+      backgroundColor: kPanelColor,
+      isScrollControlled: true,
+      shape: const RoundedRectangleBorder(
+        borderRadius: BorderRadius.vertical(top: Radius.circular(12)),
+      ),
+      builder: (sheetCtx) => Provider.value(
+        value: context.read<SequencerModel>(),
+        child: const ExportSheet(),
+      ),
+    );
   }
 
   @override
@@ -48,6 +66,14 @@ class _SequencerScreenState extends State<SequencerScreen> {
           ],
         ),
         toolbarHeight: 36,
+        actions: [
+          IconButton(
+            icon: const Icon(Icons.ios_share, size: 20),
+            tooltip: 'Export',
+            color: kTextDim,
+            onPressed: () => _showExport(context),
+          ),
+        ],
       ),
       body: Column(
         children: [

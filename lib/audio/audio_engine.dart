@@ -292,6 +292,9 @@ class AudioEngine {
   String? customPath(int track) => _trackCustomPath[track];
   int presetIndex(int track) => _trackPresetIndex[track];
   double trackVolume(int track) => _trackVolume[track];
+  /// Resolved sample path for [track] — custom file if set, otherwise the cached preset WAV.
+  String samplePath(int track) =>
+      _trackCustomPath[track] ?? _presetPaths[_trackPresetIndex[track]];
   Duration trimStart(int track) => _trimStart[track];
   Duration? trimEnd(int track) => _trimEnd[track];
   bool hasTrim(int track) =>
