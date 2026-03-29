@@ -297,6 +297,8 @@ class AudioEngine {
       _trackCustomPath[track] ?? _presetPaths[_trackPresetIndex[track]];
   Duration trimStart(int track) => _trimStart[track];
   Duration? trimEnd(int track) => _trimEnd[track];
+  /// Stream of playback position updates for [track].
+  Stream<Duration> positionStream(int track) => _players[track].onPositionChanged;
   bool hasTrim(int track) =>
       _trimStart[track] != Duration.zero || _trimEnd[track] != null;
 
