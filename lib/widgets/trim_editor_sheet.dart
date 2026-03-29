@@ -24,6 +24,7 @@ class _TrimEditorSheetState extends State<TrimEditorSheet> {
   bool _previewing = false;
   double _playProgress = 0.0;
   StreamSubscription<Duration>? _positionSub;
+  Timer? _previewTimer;
 
   // Normalised 0.0–1.0 values driven by the RangeSlider.
   double _startFrac = 0.0;
@@ -38,6 +39,7 @@ class _TrimEditorSheetState extends State<TrimEditorSheet> {
   @override
   void dispose() {
     _positionSub?.cancel();
+    _previewTimer?.cancel();
     // Stop any ongoing preview when the sheet closes.
     if (_previewing) {
       context.read<SequencerModel>().stopTrack(widget.trackIndex);
@@ -68,40 +70,53 @@ class _TrimEditorSheetState extends State<TrimEditorSheet> {
     return '${s.toString().padLeft(1, '0')}.${frac.toString().padLeft(2, '0')}s';
   }
 
+  void _stopPreview() {
+    _positionSub?.cancel();
+    _positionSub = null;
+    _previewTimer?.cancel();
+    _previewTimer = null;
+    context.read<SequencerModel>().stopTrack(widget.trackIndex);
+    if (mounted) setState(() { _previewing = false; _playProgress = 0.0; });
+  }
+
   Future<void> _togglePreview() async {
-    final model = context.read<SequencerModel>();
     final dur = _duration;
     if (dur == null) return;
 
     if (_previewing) {
-      _positionSub?.cancel();
-      _positionSub = null;
-      await model.stopTrack(widget.trackIndex);
-      if (mounted) setState(() { _previewing = false; _playProgress = 0.0; });
-    } else {
-      final startMs = (_startFrac * dur.inMilliseconds).round();
-      final endMs = (_endFrac * dur.inMilliseconds).round();
-      final start = Duration(milliseconds: startMs);
-      final end = endMs < dur.inMilliseconds ? Duration(milliseconds: endMs) : null;
-      final effectiveEndMs = end != null ? endMs : dur.inMilliseconds;
-      final trimDurationMs = effectiveEndMs - startMs;
-
-      setState(() { _previewing = true; _playProgress = 0.0; });
-
-      _positionSub?.cancel();
-      _positionSub = model.positionStream(widget.trackIndex).listen((pos) {
-        if (!mounted || trimDurationMs <= 0) return;
-        final progress = (pos.inMilliseconds - startMs) / trimDurationMs;
-        setState(() => _playProgress = progress.clamp(0.0, 1.0));
-      });
-
-      await model.previewTrim(widget.trackIndex, start, end);
-
-      // Auto-reset the button once playback finishes.
-      _positionSub?.cancel();
-      _positionSub = null;
-      if (mounted) setState(() { _previewing = false; _playProgress = 0.0; });
+      _stopPreview();
+      return;
     }
+
+    final model = context.read<SequencerModel>();
+    final startMs = (_startFrac * dur.inMilliseconds).round();
+    final endMs = (_endFrac * dur.inMilliseconds).round();
+    final start = Duration(milliseconds: startMs);
+    final end = endMs < dur.inMilliseconds ? Duration(milliseconds: endMs) : null;
+    final effectiveEndMs = end != null ? endMs : dur.inMilliseconds;
+    final trimDurationMs = effectiveEndMs - startMs;
+
+    setState(() { _previewing = true; _playProgress = 0.0; });
+
+    // Subscribe to position updates for the progress bar.
+    _positionSub?.cancel();
+    _positionSub = model.positionStream(widget.trackIndex).listen((pos) {
+      if (!mounted || trimDurationMs <= 0) return;
+      final progress = (pos.inMilliseconds - startMs) / trimDurationMs;
+      setState(() => _playProgress = progress.clamp(0.0, 1.0));
+    });
+
+    // Auto-reset after the trim duration — previewTrim returns as soon as
+    // audio setup completes, not when playback finishes.
+    _previewTimer?.cancel();
+    _previewTimer = Timer(Duration(milliseconds: trimDurationMs), () {
+      _positionSub?.cancel();
+      _positionSub = null;
+      _previewTimer = null;
+      if (mounted) setState(() { _previewing = false; _playProgress = 0.0; });
+    });
+
+    await model.previewTrim(widget.trackIndex, start, end);
   }
 
   void _applyTrim() {
@@ -185,13 +200,7 @@ class _TrimEditorSheetState extends State<TrimEditorSheet> {
                 values: RangeValues(_startFrac, _endFrac),
                 onChanged: (v) {
                   // Stop any active preview when the user adjusts the range.
-                  if (_previewing) {
-                    _positionSub?.cancel();
-                    _positionSub = null;
-                    context.read<SequencerModel>().stopTrack(widget.trackIndex);
-                    _previewing = false;
-                    _playProgress = 0.0;
-                  }
+                  if (_previewing) _stopPreview();
                   setState(() {
                     _startFrac = v.start;
                     _endFrac = v.end;
@@ -273,14 +282,8 @@ class _TrimEditorSheetState extends State<TrimEditorSheet> {
               children: [
                 TextButton(
                   onPressed: () {
-                    if (_previewing) {
-                      _positionSub?.cancel();
-                      _positionSub = null;
-                      context.read<SequencerModel>().stopTrack(widget.trackIndex);
-                    }
+                    if (_previewing) _stopPreview();
                     setState(() {
-                      _previewing = false;
-                      _playProgress = 0.0;
                       _startFrac = 0.0;
                       _endFrac = 1.0;
                     });
