@@ -279,6 +279,9 @@ class AudioEngine {
     kDrumPresets[kDefaultPresetIndices[3]].name,
   ];
 
+  /// Per-track mute flag (true = muted, no audio output).
+  final List<bool> _trackMuted = List.filled(4, false);
+
   bool _ready = false;
 
   /// Monotonically increasing counter per track. When a new trigger arrives
@@ -286,6 +289,8 @@ class AudioEngine {
   final List<int> _triggerGen = List.filled(4, 0);
 
   bool get isReady => _ready;
+  bool isMuted(int track) => _trackMuted[track];
+  void setMuted(int track, bool muted) => _trackMuted[track] = muted;
 
   String trackName(int track) => _trackNames[track];
   bool hasCustomPath(int track) => _trackCustomPath[track] != null;
@@ -463,6 +468,7 @@ class AudioEngine {
   /// playback and a timer fires [stop()] at [trimEnd].
   Future<void> trigger(int track) async {
     if (!_ready) return;
+    if (_trackMuted[track]) return;
     final gen = ++_triggerGen[track];
     _trimTimers[track]?.cancel();
     _trimTimers[track] = null;

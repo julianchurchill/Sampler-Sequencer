@@ -17,6 +17,7 @@ const _kPrefsTrackCustomName = 'track_custom_name_';
 const _kPrefsTrackVolume = 'track_volume_';
 const _kPrefsTrackTrimStart = 'track_trim_start_'; // milliseconds
 const _kPrefsTrackTrimEnd = 'track_trim_end_';     // milliseconds, -1 = none
+const _kPrefsTrackMuted = 'track_muted_';          // bool
 
 class SequencerModel extends ChangeNotifier {
   int _bpm = kDefaultBpm;
@@ -49,6 +50,7 @@ class SequencerModel extends ChangeNotifier {
   bool hasTrim(int track) => _audio.hasTrim(track);
   Duration trimStart(int track) => _audio.trimStart(track);
   Duration? trimEnd(int track) => _audio.trimEnd(track);
+  bool isMuted(int track) => _audio.isMuted(track);
 
   // ---- Persistence ----
 
@@ -108,6 +110,8 @@ class SequencerModel extends ChangeNotifier {
               : null,
         );
       }
+      final muted = prefs.getBool('$_kPrefsTrackMuted$t');
+      if (muted != null) _audio.setMuted(t, muted);
     }
 
     notifyListeners();
@@ -140,6 +144,7 @@ class SequencerModel extends ChangeNotifier {
         prefs.setInt('$_kPrefsTrackTrimStart$t', _audio.trimStart(t).inMilliseconds);
         final end = _audio.trimEnd(t);
         prefs.setInt('$_kPrefsTrackTrimEnd$t', end != null ? end.inMilliseconds : -1);
+        prefs.setBool('$_kPrefsTrackMuted$t', _audio.isMuted(t));
       }
     });
   }
@@ -220,6 +225,12 @@ class SequencerModel extends ChangeNotifier {
 
   void clearTrim(int track) {
     _audio.clearTrim(track);
+    notifyListeners();
+    _save();
+  }
+
+  void toggleMute(int track) {
+    _audio.setMuted(track, !_audio.isMuted(track));
     notifyListeners();
     _save();
   }

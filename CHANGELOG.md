@@ -5,6 +5,12 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [1.9.0] - 2026-03-29
+
+### Added
+- Track muting: tap the speaker icon on any track label to instantly mute or unmute that track; muted tracks are silenced during sequencer playback and the track name dims to indicate mute state; mute state persists across app restarts
+- Tapping the track name now opens the track settings sheet (previously any tap on the label area opened settings)
+
 ## [1.8.0] - 2026-03-29
 
 ### Changed
