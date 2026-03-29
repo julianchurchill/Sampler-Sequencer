@@ -466,13 +466,14 @@ class AudioEngine {
   /// an async operation is in flight, the stale operation is abandoned.
   /// When trim points are set, the sample is seeked to [trimStart] before
   /// playback and a timer fires [stop()] at [trimEnd].
-  Future<void> trigger(int track) async {
+  Future<void> trigger(int track, {double velocity = 1.0}) async {
     if (!_ready) return;
     if (_trackMuted[track]) return;
     final gen = ++_triggerGen[track];
     _trimTimers[track]?.cancel();
     _trimTimers[track] = null;
     final path = _trackCustomPath[track] ?? _presetPaths[_trackPresetIndex[track]];
+    final effectiveVolume = (_trackVolume[track] * velocity.clamp(0.0, 1.0)).clamp(0.0, 1.0);
     try {
       final start = _trimStart[track];
       final end = _trimEnd[track];
@@ -484,7 +485,7 @@ class AudioEngine {
       if (trimmed) {
         await _players[track].setSource(DeviceFileSource(path));
         if (_triggerGen[track] != gen) return;
-        await _players[track].setVolume(_trackVolume[track]);
+        await _players[track].setVolume(effectiveVolume);
         if (_triggerGen[track] != gen) return;
         await _players[track].seek(start);
         if (_triggerGen[track] != gen) return;
@@ -503,7 +504,7 @@ class AudioEngine {
       } else {
         await _players[track].play(
           DeviceFileSource(path),
-          volume: _trackVolume[track],
+          volume: effectiveVolume,
         );
       }
     } catch (e) {

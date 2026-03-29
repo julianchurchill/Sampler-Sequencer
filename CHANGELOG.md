@@ -5,6 +5,13 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [2.0.0] - 2026-03-29
+
+### Added
+- Per-pad velocity: long-press any pad to open a configuration sheet and set its velocity (0–100%); velocity scales the track volume for that hit
+- Dot indicator appears at the bottom of any pad whose settings differ from the default (velocity < 100%), visible on both active and inactive pads
+- Velocity persists across app restarts; clearing all steps also resets all velocities to default
+
 ## [1.9.1] - 2026-03-29
 
 ### Changed

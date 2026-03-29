@@ -18,6 +18,7 @@ const _kPrefsTrackVolume = 'track_volume_';
 const _kPrefsTrackTrimStart = 'track_trim_start_'; // milliseconds
 const _kPrefsTrackTrimEnd = 'track_trim_end_';     // milliseconds, -1 = none
 const _kPrefsTrackMuted = 'track_muted_';          // bool
+const _kPrefsStepVelocity = 'step_vel_';           // comma-separated floats per track
 
 class SequencerModel extends ChangeNotifier {
   int _bpm = kDefaultBpm;
@@ -33,6 +34,12 @@ class SequencerModel extends ChangeNotifier {
     (_) => List.filled(kNumSteps, false),
   );
 
+  /// Per-step velocity (0.0–1.0, default kDefaultStepVelocity).
+  final List<List<double>> _stepVelocity = List.generate(
+    kNumTracks,
+    (_) => List.filled(kNumSteps, kDefaultStepVelocity),
+  );
+
   final AudioEngine _audio = AudioEngine();
   Timer? _stepTimer;
 
@@ -44,6 +51,9 @@ class SequencerModel extends ChangeNotifier {
   int get currentStep => _currentStep;
 
   bool stepEnabled(int track, int step) => _steps[track][step];
+  double stepVelocity(int track, int step) => _stepVelocity[track][step];
+  bool hasNonDefaultStepSettings(int track, int step) =>
+      _stepVelocity[track][step] != kDefaultStepVelocity;
   bool hasCustomSample(int track) => _audio.hasCustomPath(track);
   String trackName(int track) => _audio.trackName(track);
   double trackVolume(int track) => _audio.trackVolume(track);
@@ -112,6 +122,13 @@ class SequencerModel extends ChangeNotifier {
       }
       final muted = prefs.getBool('$_kPrefsTrackMuted$t');
       if (muted != null) _audio.setMuted(t, muted);
+      final velStr = prefs.getString('$_kPrefsStepVelocity$t');
+      if (velStr != null) {
+        final parts = velStr.split(',');
+        for (int s = 0; s < kNumSteps && s < parts.length; s++) {
+          _stepVelocity[t][s] = double.tryParse(parts[s]) ?? kDefaultStepVelocity;
+        }
+      }
     }
 
     notifyListeners();
@@ -145,6 +162,8 @@ class SequencerModel extends ChangeNotifier {
         final end = _audio.trimEnd(t);
         prefs.setInt('$_kPrefsTrackTrimEnd$t', end != null ? end.inMilliseconds : -1);
         prefs.setBool('$_kPrefsTrackMuted$t', _audio.isMuted(t));
+        prefs.setString('$_kPrefsStepVelocity$t',
+            _stepVelocity[t].map((v) => v.toStringAsFixed(3)).join(','));
       }
     });
   }
@@ -235,6 +254,12 @@ class SequencerModel extends ChangeNotifier {
     _save();
   }
 
+  void setStepVelocity(int track, int step, double velocity) {
+    _stepVelocity[track][step] = velocity.clamp(0.0, 1.0);
+    notifyListeners();
+    _save();
+  }
+
   Future<Duration?> getTrackDuration(int track) => _audio.getTrackDuration(track);
 
   /// Render [numLoops] loops of the current sequence to a WAV file at [outputPath].
@@ -266,6 +291,9 @@ class SequencerModel extends ChangeNotifier {
   void clearAllSteps() {
     for (final row in _steps) {
       row.fillRange(0, row.length, false);
+    }
+    for (final row in _stepVelocity) {
+      row.fillRange(0, row.length, kDefaultStepVelocity);
     }
     notifyListeners();
     _save();
@@ -314,7 +342,7 @@ class SequencerModel extends ChangeNotifier {
   void _fireAndAdvance() {
     for (int t = 0; t < kNumTracks; t++) {
       if (_steps[t][_currentStep]) {
-        _audio.trigger(t);
+        _audio.trigger(t, velocity: _stepVelocity[t][_currentStep]);
       }
     }
     notifyListeners();
