@@ -1,3 +1,5 @@
+import 'dart:async';
+
 import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
 
@@ -20,6 +22,8 @@ class _TrimEditorSheetState extends State<TrimEditorSheet> {
   Duration? _duration;
   bool _loading = true;
   bool _previewing = false;
+  double _playProgress = 0.0;
+  StreamSubscription<Duration>? _positionSub;
 
   // Normalised 0.0–1.0 values driven by the RangeSlider.
   double _startFrac = 0.0;
@@ -33,6 +37,7 @@ class _TrimEditorSheetState extends State<TrimEditorSheet> {
 
   @override
   void dispose() {
+    _positionSub?.cancel();
     // Stop any ongoing preview when the sheet closes.
     if (_previewing) {
       context.read<SequencerModel>().stopTrack(widget.trackIndex);
@@ -69,19 +74,33 @@ class _TrimEditorSheetState extends State<TrimEditorSheet> {
     if (dur == null) return;
 
     if (_previewing) {
+      _positionSub?.cancel();
+      _positionSub = null;
       await model.stopTrack(widget.trackIndex);
-      if (mounted) setState(() => _previewing = false);
+      if (mounted) setState(() { _previewing = false; _playProgress = 0.0; });
     } else {
       final startMs = (_startFrac * dur.inMilliseconds).round();
       final endMs = (_endFrac * dur.inMilliseconds).round();
       final start = Duration(milliseconds: startMs);
       final end = endMs < dur.inMilliseconds ? Duration(milliseconds: endMs) : null;
+      final effectiveEndMs = end != null ? endMs : dur.inMilliseconds;
+      final trimDurationMs = effectiveEndMs - startMs;
 
-      setState(() => _previewing = true);
+      setState(() { _previewing = true; _playProgress = 0.0; });
+
+      _positionSub?.cancel();
+      _positionSub = model.positionStream(widget.trackIndex).listen((pos) {
+        if (!mounted || trimDurationMs <= 0) return;
+        final progress = (pos.inMilliseconds - startMs) / trimDurationMs;
+        setState(() => _playProgress = progress.clamp(0.0, 1.0));
+      });
+
       await model.previewTrim(widget.trackIndex, start, end);
 
       // Auto-reset the button once playback finishes.
-      if (mounted) setState(() => _previewing = false);
+      _positionSub?.cancel();
+      _positionSub = null;
+      if (mounted) setState(() { _previewing = false; _playProgress = 0.0; });
     }
   }
 
@@ -167,8 +186,11 @@ class _TrimEditorSheetState extends State<TrimEditorSheet> {
                 onChanged: (v) {
                   // Stop any active preview when the user adjusts the range.
                   if (_previewing) {
+                    _positionSub?.cancel();
+                    _positionSub = null;
                     context.read<SequencerModel>().stopTrack(widget.trackIndex);
                     _previewing = false;
+                    _playProgress = 0.0;
                   }
                   setState(() {
                     _startFrac = v.start;
@@ -177,6 +199,55 @@ class _TrimEditorSheetState extends State<TrimEditorSheet> {
                 },
               ),
             ),
+
+            // Playback progress indicator (shown while previewing)
+            if (_previewing) ...[
+              const SizedBox(height: 4),
+              LayoutBuilder(
+                builder: (context, constraints) {
+                  final w = constraints.maxWidth;
+                  final indicatorX = (_playProgress * w).clamp(0.0, w);
+                  return SizedBox(
+                    height: 16,
+                    child: Stack(
+                      clipBehavior: Clip.none,
+                      children: [
+                        Positioned(
+                          left: 0,
+                          right: 0,
+                          top: 7,
+                          child: Container(
+                            height: 2,
+                            color: color.withValues(alpha: 0.25),
+                          ),
+                        ),
+                        Positioned(
+                          left: 0,
+                          width: indicatorX,
+                          top: 7,
+                          child: Container(
+                            height: 2,
+                            color: color.withValues(alpha: 0.7),
+                          ),
+                        ),
+                        Positioned(
+                          left: (indicatorX - 6).clamp(0.0, w - 12),
+                          top: 1,
+                          child: Container(
+                            width: 12,
+                            height: 12,
+                            decoration: BoxDecoration(
+                              color: color,
+                              shape: BoxShape.circle,
+                            ),
+                          ),
+                        ),
+                      ],
+                    ),
+                  );
+                },
+              ),
+            ],
 
             // Total duration label + preview button
             Row(
@@ -188,10 +259,10 @@ class _TrimEditorSheetState extends State<TrimEditorSheet> {
                 ),
                 IconButton(
                   onPressed: _togglePreview,
-                  tooltip: _previewing ? 'Stop preview' : 'Preview trimmed sample',
+                  tooltip: _previewing ? 'Pause preview' : 'Preview trimmed sample',
                   color: color,
                   icon: Icon(
-                    _previewing ? Icons.stop_circle_outlined : Icons.play_circle_outline,
+                    _previewing ? Icons.pause_circle_outline : Icons.play_circle_outline,
                   ),
                 ),
               ],
@@ -205,10 +276,13 @@ class _TrimEditorSheetState extends State<TrimEditorSheet> {
                 TextButton(
                   onPressed: () {
                     if (_previewing) {
+                      _positionSub?.cancel();
+                      _positionSub = null;
                       context.read<SequencerModel>().stopTrack(widget.trackIndex);
-                      _previewing = false;
                     }
                     setState(() {
+                      _previewing = false;
+                      _playProgress = 0.0;
                       _startFrac = 0.0;
                       _endFrac = 1.0;
                     });
