@@ -433,6 +433,23 @@ class AudioEngine {
     }
   }
 
+  /// Stop all tracks immediately (e.g. when the sequencer is stopped).
+  Future<void> stopAll() async {
+    if (!_ready) return;
+    for (int t = 0; t < _players.length; t++) {
+      ++_triggerGen[t];
+      _trimTimers[t]?.cancel();
+      _trimTimers[t] = null;
+    }
+    await Future.wait([
+      for (int t = 0; t < _players.length; t++)
+        _players[t].stop().catchError((e) {
+          debugPrint('AudioEngine stopAll error on track $t: $e');
+          return;
+        }),
+    ]);
+  }
+
   /// Trigger a one-shot hit on [track].
   ///
   /// Uses a generation counter so that if a newer trigger arrives while
