@@ -5,6 +5,7 @@ import 'package:flutter/foundation.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 
 import '../audio/audio_engine.dart';
+import '../audio/audio_exporter.dart';
 import '../constants.dart';
 
 const _kPrefsSteps = 'sequencer_steps';
@@ -224,6 +225,28 @@ class SequencerModel extends ChangeNotifier {
   }
 
   Future<Duration?> getTrackDuration(int track) => _audio.getTrackDuration(track);
+
+  /// Render [numLoops] loops of the current sequence to a WAV file at [outputPath].
+  /// [unsupportedTracks] is populated with track indices whose samples could not
+  /// be decoded (non-WAV files) and were silenced in the mix.
+  Future<void> exportWav({
+    required int numLoops,
+    required String outputPath,
+    required List<int> unsupportedTracks,
+    void Function(double)? onProgress,
+  }) =>
+      AudioExporter.export(
+        samplePaths: List.generate(kNumTracks, _audio.samplePath),
+        volumes: List.generate(kNumTracks, _audio.trackVolume),
+        trimStarts: List.generate(kNumTracks, _audio.trimStart),
+        trimEnds: List.generate(kNumTracks, _audio.trimEnd),
+        steps: _steps,
+        bpm: _bpm,
+        numLoops: numLoops,
+        outputPath: outputPath,
+        unsupportedTracks: unsupportedTracks,
+        onProgress: onProgress,
+      );
   Future<void> previewTrim(int track, Duration start, Duration? end) =>
       _audio.previewTrim(track, start, end);
   Future<void> stopTrack(int track) => _audio.stopTrack(track);

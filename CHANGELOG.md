@@ -5,6 +5,17 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [1.7.0] - 2026-03-29
+
+### Added
+- Export N loops of the sequence to a 44100 Hz 16-bit stereo WAV via the share icon in the app bar; the OS share sheet lets the user save it to files, send it, or open it in a DAW
+- Export sheet shows loop count (1–16), total duration preview, and a progress bar during rendering
+- Tracks with non-WAV custom samples are silenced and flagged with a warning in the sheet
+- Recordings are now saved as WAV instead of M4A, making them directly usable in the exporter and compatible with any audio tool
+
+### Changed
+- `share_plus` added as a dependency for sharing the exported file
+
 ## [1.6.0] - 2026-03-29
 
 ### Added

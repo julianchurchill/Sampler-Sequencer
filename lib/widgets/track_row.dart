@@ -322,7 +322,7 @@ class _SoundPickerSheetState extends State<_SoundPickerSheet> {
     }
     final tmp = await getTemporaryDirectory();
     final path =
-        '${tmp.path}/rec_${DateTime.now().millisecondsSinceEpoch}.m4a';
+        '${tmp.path}/rec_${DateTime.now().millisecondsSinceEpoch}.wav';
     await _recorder.start(path);
     if (mounted) setState(() => _recordState = _RecordState.recording);
   }
