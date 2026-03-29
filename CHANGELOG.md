@@ -5,6 +5,14 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [1.6.0] - 2026-03-29
+
+### Added
+- Sample library now persists display names across app restarts via an `index.json` file in the library directory
+- Recordings use timestamp-based filenames, eliminating name collision overwrites
+- Rename no longer renames the file on disk — only the display name in the index is updated
+- Existing libraries without an index are automatically migrated on first launch
+
 ## [1.5.3] - 2026-03-29
 
 ### Fixed

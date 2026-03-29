@@ -1,3 +1,4 @@
+import 'dart:convert';
 import 'dart:io';
 
 import 'package:flutter/foundation.dart';
@@ -10,69 +11,106 @@ class SampleEntry {
 }
 
 /// Persists user recordings to {documentsDir}/sampler_library/.
+///
+/// An index.json file in the library directory maps file paths to display
+/// names, so names survive app restarts exactly as entered. Files use
+/// timestamp-based names to avoid collisions.
 class SampleLibrary extends ChangeNotifier {
   final List<SampleEntry> _samples = [];
   List<SampleEntry> get samples => List.unmodifiable(_samples);
 
   Directory? _libraryDir;
+  File? _indexFile;
 
   Future<void> init() async {
     final docsDir = await getApplicationDocumentsDirectory();
     _libraryDir = Directory('${docsDir.path}/sampler_library');
     await _libraryDir!.create(recursive: true);
-    _reload();
+    _indexFile = File('${_libraryDir!.path}/index.json');
+    await _loadIndex();
+    notifyListeners();
   }
 
-  void _reload() {
+  Future<void> _loadIndex() async {
+    _samples.clear();
+    if (_indexFile != null && await _indexFile!.exists()) {
+      try {
+        final data = jsonDecode(await _indexFile!.readAsString()) as List<dynamic>;
+        for (final item in data) {
+          final path = item['path'] as String;
+          final name = item['name'] as String;
+          if (await File(path).exists()) {
+            _samples.add(SampleEntry(path: path, name: name));
+          }
+        }
+        return;
+      } catch (e) {
+        debugPrint('SampleLibrary index load error: $e');
+      }
+    }
+    // No index or corrupted — migrate existing files, then write the index.
+    _migrateFromFiles();
+  }
+
+  /// One-time migration: build the index from files already in the library
+  /// directory (created before index.json was introduced).
+  void _migrateFromFiles() {
     if (_libraryDir == null) return;
     final files = _libraryDir!
         .listSync()
         .whereType<File>()
+        .where((f) => !f.path.endsWith('index.json'))
         .toList()
-      ..sort((a, b) =>
-          a.statSync().modified.compareTo(b.statSync().modified));
-    _samples.clear();
+      ..sort((a, b) => a.statSync().modified.compareTo(b.statSync().modified));
     for (final file in files) {
       final filename = file.path.split('/').last;
-      final name = filename.contains('.')
+      final stem = filename.contains('.')
           ? filename.substring(0, filename.lastIndexOf('.'))
           : filename;
-      _samples.add(SampleEntry(path: file.path, name: name));
+      // Best-effort: convert underscores back to spaces for readability.
+      _samples.add(SampleEntry(path: file.path, name: stem.replaceAll('_', ' ')));
     }
-    notifyListeners();
+    _saveIndex();
+  }
+
+  Future<void> _saveIndex() async {
+    if (_indexFile == null) return;
+    try {
+      final data = _samples.map((e) => {'path': e.path, 'name': e.name}).toList();
+      await _indexFile!.writeAsString(jsonEncode(data));
+    } catch (e) {
+      debugPrint('SampleLibrary index save error: $e');
+    }
   }
 
   /// Copy a finished recording into the library with [name] as the display name.
   Future<void> addRecording(String tempPath, String name) async {
     if (_libraryDir == null) return;
-    final safeName = _sanitize(name);
     final ext = tempPath.contains('.') ? tempPath.split('.').last : 'm4a';
-    final destPath = '${_libraryDir!.path}/$safeName.$ext';
+    // Use a timestamp filename to avoid collisions regardless of display name.
+    final filename = '${DateTime.now().millisecondsSinceEpoch}.$ext';
+    final destPath = '${_libraryDir!.path}/$filename';
     await File(tempPath).copy(destPath);
     _samples.add(SampleEntry(path: destPath, name: name));
+    await _saveIndex();
     notifyListeners();
   }
 
-  /// Rename a library entry (renames the file on disk).
+  /// Rename a library entry. Updates the index; does not rename the file.
   Future<void> rename(SampleEntry entry, String newName) async {
-    final safeName = _sanitize(newName);
-    final ext = entry.path.contains('.') ? entry.path.split('.').last : 'm4a';
-    final dir = entry.path.substring(0, entry.path.lastIndexOf('/'));
-    final newPath = '$dir/$safeName.$ext';
-    await File(entry.path).rename(newPath);
-    entry.path = newPath;
     entry.name = newName;
+    await _saveIndex();
     notifyListeners();
   }
 
   Future<void> delete(SampleEntry entry) async {
-    await File(entry.path).delete();
+    try {
+      await File(entry.path).delete();
+    } catch (e) {
+      debugPrint('SampleLibrary delete error: $e');
+    }
     _samples.remove(entry);
+    await _saveIndex();
     notifyListeners();
   }
-
-  String _sanitize(String name) => name
-      .trim()
-      .replaceAll(RegExp(r'[/\\:*?"<>|]'), '_')
-      .replaceAll(RegExp(r'\s+'), '_');
 }
