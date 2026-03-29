@@ -53,6 +53,16 @@ class SequencerModel extends ChangeNotifier {
 
   /// Call once after construction to restore previously saved state.
   Future<void> init() async {
+    // Initialise the audio engine first so that player instances exist before
+    // we try to restore per-track volume (setTrackVolume accesses _players).
+    _isLoading = true;
+    notifyListeners();
+    try {
+      await _audio.init();
+    } finally {
+      _isLoading = false;
+    }
+
     final prefs = await SharedPreferences.getInstance();
 
     // Steps
@@ -232,11 +242,13 @@ class SequencerModel extends ChangeNotifier {
       Duration(microseconds: (60000000 / (_bpm * kStepsPerQuarterNote)).round());
 
   Future<void> _play() async {
-    _isLoading = true;
-    notifyListeners();
     try {
       if (!_audio.isReady) {
+        // Fallback in case init() hasn't completed yet.
+        _isLoading = true;
+        notifyListeners();
         await _audio.init();
+        _isLoading = false;
       }
       _isPlaying = true;
       _currentStep = 0;

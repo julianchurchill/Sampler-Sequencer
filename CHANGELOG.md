@@ -5,6 +5,11 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [1.5.2] - 2026-03-29
+
+### Fixed
+- Track sample and volume settings were not restored on app restart. `AudioEngine.init()` was only called lazily on first play, so the restore loop in `SequencerModel.init()` threw a `RangeError` when trying to set volume on uninitialised players, aborting the loop before most tracks were processed and preventing `notifyListeners()` from firing. The engine is now initialised eagerly at startup before state is restored.
+
 ## [1.5.1] - 2026-03-28
 
 ### Changed
