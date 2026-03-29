@@ -200,10 +200,9 @@ class _TrimEditorSheetState extends State<TrimEditorSheet> {
               ),
             ),
 
-            // Playback progress indicator (shown while previewing)
-            if (_previewing) ...[
-              const SizedBox(height: 4),
-              LayoutBuilder(
+            // Playback progress indicator
+            const SizedBox(height: 4),
+            LayoutBuilder(
                 builder: (context, constraints) {
                   final w = constraints.maxWidth;
                   final indicatorX = (_playProgress * w).clamp(0.0, w);
@@ -247,7 +246,6 @@ class _TrimEditorSheetState extends State<TrimEditorSheet> {
                   );
                 },
               ),
-            ],
 
             // Total duration label + preview button
             Row(
