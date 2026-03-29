@@ -36,3 +36,5 @@ const Color kPanelColor = Color(0xFF161616);
 const Color kStepInactive = Color(0xFF2D2D2D);
 const Color kStepCurrentInactive = Color(0xFF3D3D3D);
 const Color kTextDim = Color(0xFF888888);
+
+const double kDefaultStepVelocity = 1.0;
