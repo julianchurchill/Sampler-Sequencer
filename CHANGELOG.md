@@ -5,6 +5,13 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [2.1.1] - 2026-03-30
+
+### Fixed
+- Reduced audio crackling on synthesised presets by applying a 256-sample (~5.8 ms) linear fade-in and fade-out when encoding generated WAV files. Noise-based sounds (snare, hi-hats, clap) previously produced a non-zero first sample that caused an audible click each time the player restarted.
+- Eliminated click when a long sample (open hi-hat, cowbell) is cut off by a rapid retrigger on the same track. The player is now silenced via `setVolume(0)` immediately before `stop()`, ensuring the output is already at zero by the time the MediaPlayer transitions to stopped state.
+- Removed `setSource()` from the real-time trigger path. Sources are pre-loaded in `init()` and reloaded only when the preset or file changes, cutting one platform-channel round-trip and a MediaPlayer re-preparation cycle from every hit.
+
 ## [2.1.0] - 2026-03-29
 
 ### Added
