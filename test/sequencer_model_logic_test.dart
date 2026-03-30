@@ -17,8 +17,6 @@ void main() {
     SharedPreferences.setMockInitialValues({});
     audio = MockAudioEngine();
 
-    // Stub every AudioEngine getter/method that SequencerModel calls on
-    // construction or in the methods under test.
     when(() => audio.isReady).thenReturn(false);
     when(() => audio.isMuted(any())).thenReturn(false);
     when(() => audio.trackVolume(any())).thenReturn(1.0);
@@ -36,113 +34,136 @@ void main() {
 
   // -------------------------------------------------------------------------
   group('setBpm', () {
-    test('clamps below kMinBpm to kMinBpm', () {
+    test('clamps a value below kMinBpm up to kMinBpm', () {
       model.setBpm(0);
-      expect(model.bpm, kMinBpm);
+      expect(model.bpm, kMinBpm,
+          reason: 'setBpm(0) should clamp to kMinBpm ($kMinBpm), not store an invalid tempo');
     });
 
-    test('clamps above kMaxBpm to kMaxBpm', () {
+    test('clamps a value above kMaxBpm down to kMaxBpm', () {
       model.setBpm(9999);
-      expect(model.bpm, kMaxBpm);
+      expect(model.bpm, kMaxBpm,
+          reason: 'setBpm(9999) should clamp to kMaxBpm ($kMaxBpm), not store an invalid tempo');
     });
 
-    test('accepts a mid-range value', () {
+    test('stores a valid mid-range value unchanged', () {
       model.setBpm(140);
-      expect(model.bpm, 140);
+      expect(model.bpm, 140,
+          reason: 'setBpm(140) should store 140 — it is within [kMinBpm, kMaxBpm]');
     });
 
-    test('accepts exact boundary kMinBpm', () {
+    test('accepts the exact lower boundary kMinBpm', () {
       model.setBpm(kMinBpm);
-      expect(model.bpm, kMinBpm);
+      expect(model.bpm, kMinBpm,
+          reason: 'setBpm(kMinBpm) should store $kMinBpm without clamping');
     });
 
-    test('accepts exact boundary kMaxBpm', () {
+    test('accepts the exact upper boundary kMaxBpm', () {
       model.setBpm(kMaxBpm);
-      expect(model.bpm, kMaxBpm);
+      expect(model.bpm, kMaxBpm,
+          reason: 'setBpm(kMaxBpm) should store $kMaxBpm without clamping');
     });
 
-    test('notifies listeners', () {
+    test('notifies listeners and updates bpm', () {
       int notifyCount = 0;
       model.addListener(() => notifyCount++);
       model.setBpm(140);
-      expect(notifyCount, greaterThan(0));
+      expect(notifyCount, greaterThan(0),
+          reason: 'setBpm should call notifyListeners so the UI can redraw');
+      expect(model.bpm, 140,
+          reason: 'bpm should be 140 after setBpm(140)');
     });
   });
 
   // -------------------------------------------------------------------------
   group('toggleStep', () {
-    test('inactive step becomes active', () {
+    test('activates an inactive step', () {
       model.toggleStep(0, 0);
-      expect(model.stepEnabled(0, 0), isTrue);
+      expect(model.stepEnabled(0, 0), isTrue,
+          reason: 'toggleStep on an inactive step should activate it');
     });
 
-    test('active step becomes inactive after second toggle', () {
+    test('deactivates an active step on second toggle', () {
       model.toggleStep(0, 0);
       model.toggleStep(0, 0);
-      expect(model.stepEnabled(0, 0), isFalse);
+      expect(model.stepEnabled(0, 0), isFalse,
+          reason: 'Two toggles should return the step to its original inactive state');
     });
 
-    test('notifies listeners', () {
+    test('notifies listeners and updates step state', () {
       int notifyCount = 0;
       model.addListener(() => notifyCount++);
       model.toggleStep(0, 0);
-      expect(notifyCount, greaterThan(0));
+      expect(notifyCount, greaterThan(0),
+          reason: 'toggleStep should call notifyListeners so the grid redraws');
+      expect(model.stepEnabled(0, 0), isTrue,
+          reason: 'Step (0, 0) should be enabled after toggleStep');
     });
 
-    test('toggling one step does not affect others', () {
+    test('toggling one step does not affect adjacent steps', () {
       model.toggleStep(0, 0);
-      expect(model.stepEnabled(0, 1), isFalse);
-      expect(model.stepEnabled(1, 0), isFalse);
+      expect(model.stepEnabled(0, 1), isFalse,
+          reason: 'Toggling step (0,0) must not affect step (0,1)');
+      expect(model.stepEnabled(1, 0), isFalse,
+          reason: 'Toggling step (0,0) must not affect step (1,0) on a different track');
     });
   });
 
   // -------------------------------------------------------------------------
   group('setStepVelocity', () {
-    test('clamps negative value to 0.0', () {
+    test('clamps a negative value to 0.0', () {
       model.setStepVelocity(0, 0, -0.5);
-      expect(model.stepVelocity(0, 0), 0.0);
+      expect(model.stepVelocity(0, 0), 0.0,
+          reason: 'Negative velocity (-0.5) should clamp to 0.0 — silent');
     });
 
-    test('clamps value above 1.0 to 1.0', () {
+    test('clamps a value above 1.0 to 1.0', () {
       model.setStepVelocity(0, 0, 1.5);
-      expect(model.stepVelocity(0, 0), 1.0);
+      expect(model.stepVelocity(0, 0), 1.0,
+          reason: 'Velocity above 1.0 (1.5) should clamp to 1.0 — maximum volume');
     });
 
-    test('stores a mid-range value', () {
+    test('stores a valid mid-range value unchanged', () {
       model.setStepVelocity(0, 0, 0.5);
-      expect(model.stepVelocity(0, 0), 0.5);
+      expect(model.stepVelocity(0, 0), 0.5,
+          reason: 'setStepVelocity(0, 0, 0.5) should store 0.5 — a valid velocity');
     });
 
-    test('notifies listeners', () {
+    test('notifies listeners and updates velocity', () {
       int notifyCount = 0;
       model.addListener(() => notifyCount++);
       model.setStepVelocity(0, 0, 0.5);
-      expect(notifyCount, greaterThan(0));
+      expect(notifyCount, greaterThan(0),
+          reason: 'setStepVelocity should call notifyListeners so the pad indicator redraws');
+      expect(model.stepVelocity(0, 0), 0.5,
+          reason: 'Velocity for step (0,0) should be 0.5 after setStepVelocity(0, 0, 0.5)');
     });
   });
 
   // -------------------------------------------------------------------------
   group('hasNonDefaultStepSettings', () {
-    test('returns false for a fresh step', () {
-      expect(model.hasNonDefaultStepSettings(0, 0), isFalse);
+    test('returns false for a freshly constructed step', () {
+      expect(model.hasNonDefaultStepSettings(0, 0), isFalse,
+          reason: 'A new step has default velocity ($kDefaultStepVelocity) so hasNonDefaultStepSettings should be false');
     });
 
-    test('returns true after setting non-default velocity', () {
+    test('returns true after setting a non-default velocity', () {
       model.setStepVelocity(0, 0, 0.5);
-      expect(model.hasNonDefaultStepSettings(0, 0), isTrue);
+      expect(model.hasNonDefaultStepSettings(0, 0), isTrue,
+          reason: 'Velocity 0.5 != $kDefaultStepVelocity so hasNonDefaultStepSettings should be true');
     });
 
-    test('returns false after resetting to default velocity', () {
+    test('returns false after resetting velocity to the default', () {
       model.setStepVelocity(0, 0, 0.5);
       model.setStepVelocity(0, 0, kDefaultStepVelocity);
-      expect(model.hasNonDefaultStepSettings(0, 0), isFalse);
+      expect(model.hasNonDefaultStepSettings(0, 0), isFalse,
+          reason: 'Resetting velocity to kDefaultStepVelocity should make hasNonDefaultStepSettings return false again');
     });
   });
 
   // -------------------------------------------------------------------------
   group('clearAllSteps', () {
-    test('disables all previously active steps', () {
-      // Activate a spread of steps across tracks.
+    test('disables all previously active steps across all tracks', () {
       model.toggleStep(0, 0);
       model.toggleStep(1, 5);
       model.toggleStep(2, 15);
@@ -153,12 +174,12 @@ void main() {
       for (int t = 0; t < kNumTracks; t++) {
         for (int s = 0; s < kNumSteps; s++) {
           expect(model.stepEnabled(t, s), isFalse,
-              reason: 'track $t step $s should be disabled');
+              reason: 'clearAllSteps should disable step ($t, $s) — it was not cleared');
         }
       }
     });
 
-    test('resets all velocities to kDefaultStepVelocity', () {
+    test('resets all step velocities to kDefaultStepVelocity', () {
       model.setStepVelocity(0, 0, 0.25);
       model.setStepVelocity(2, 7, 0.75);
 
@@ -167,37 +188,41 @@ void main() {
       for (int t = 0; t < kNumTracks; t++) {
         for (int s = 0; s < kNumSteps; s++) {
           expect(model.stepVelocity(t, s), kDefaultStepVelocity,
-              reason: 'track $t step $s velocity should be default');
+              reason: 'clearAllSteps should reset velocity at ($t, $s) to $kDefaultStepVelocity');
         }
       }
     });
 
-    test('notifies listeners', () {
+    test('notifies listeners and leaves all steps disabled', () {
       int notifyCount = 0;
+      model.toggleStep(0, 0);
       model.addListener(() => notifyCount++);
       model.clearAllSteps();
-      expect(notifyCount, greaterThan(0));
+      expect(notifyCount, greaterThan(0),
+          reason: 'clearAllSteps should call notifyListeners so the grid redraws');
+      expect(model.stepEnabled(0, 0), isFalse,
+          reason: 'Step (0,0) should be disabled after clearAllSteps');
     });
   });
 
   // -------------------------------------------------------------------------
   group('stepDuration', () {
-    test('is correct at 120 bpm (16th notes)', () {
+    test('is 125 000 µs at 120 BPM (16th notes)', () {
       model.setBpm(120);
-      // 60_000_000 µs / (120 bpm * 4 steps/beat) = 125_000 µs
-      expect(model.stepDuration, const Duration(microseconds: 125000));
+      expect(model.stepDuration, const Duration(microseconds: 125000),
+          reason: '60 000 000 µs / (120 BPM × 4 steps/beat) = 125 000 µs per step');
     });
 
-    test('is correct at 40 bpm', () {
+    test('is 375 000 µs at 40 BPM', () {
       model.setBpm(40);
-      // 60_000_000 / (40 * 4) = 375_000 µs
-      expect(model.stepDuration, const Duration(microseconds: 375000));
+      expect(model.stepDuration, const Duration(microseconds: 375000),
+          reason: '60 000 000 µs / (40 BPM × 4 steps/beat) = 375 000 µs per step');
     });
 
-    test('is correct at 300 bpm', () {
+    test('is 50 000 µs at 300 BPM', () {
       model.setBpm(300);
-      // 60_000_000 / (300 * 4) = 50_000 µs
-      expect(model.stepDuration, const Duration(microseconds: 50000));
+      expect(model.stepDuration, const Duration(microseconds: 50000),
+          reason: '60 000 000 µs / (300 BPM × 4 steps/beat) = 50 000 µs per step');
     });
   });
 }
