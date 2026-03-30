@@ -5,11 +5,24 @@ import 'dart:typed_data';
 // PCM WAV generation helpers
 // ---------------------------------------------------------------------------
 
+/// Number of samples over which a linear fade-in and fade-out are applied by
+/// [buildWav]. At 44 100 Hz this is ~5.8 ms — short enough to be inaudible as
+/// an effect yet long enough to prevent click/pop artefacts caused by an
+/// abrupt amplitude step at the very start or end of a synthesised sample.
+const int kWavFadeSamples = 256;
+
 /// Builds a 16-bit mono PCM WAV file in memory.
+///
+/// A linear fade-in is applied to the first [kWavFadeSamples] samples and a
+/// linear fade-out to the last [kWavFadeSamples] samples. This eliminates
+/// click artefacts that occur when noise-based generators (snare, hi-hats)
+/// produce a non-zero first sample, or when a sample is abruptly cut off at
+/// its natural end.
 Uint8List buildWav(Float64List samples, int sampleRate) {
   final numSamples = samples.length;
   final dataBytes = numSamples * 2;
   final totalBytes = 44 + dataBytes;
+  final fadeSamples = kWavFadeSamples.clamp(0, numSamples ~/ 2);
 
   final buf = ByteData(totalBytes);
   int pos = 0;
@@ -43,7 +56,12 @@ Uint8List buildWav(Float64List samples, int sampleRate) {
   buf.setUint32(pos, dataBytes, Endian.little); pos += 4;
 
   for (int i = 0; i < numSamples; i++) {
-    final v = (samples[i] * 32767).clamp(-32768, 32767).toInt();
+    double s = samples[i];
+    if (fadeSamples > 0) {
+      if (i < fadeSamples) s *= i / fadeSamples;
+      if (i >= numSamples - fadeSamples) s *= (numSamples - 1 - i) / fadeSamples;
+    }
+    final v = (s * 32767).clamp(-32768, 32767).toInt();
     buf.setInt16(pos, v, Endian.little);
     pos += 2;
   }

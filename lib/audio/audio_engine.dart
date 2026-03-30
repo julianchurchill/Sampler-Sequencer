@@ -132,6 +132,13 @@ class AudioEngine {
       _players.add(player);
     }
 
+    // Pre-load each track's source so that trigger() can seek+resume without
+    // calling setSource() in the real-time path. This eliminates one
+    // platform-channel round-trip (and MediaPlayer re-preparation) per hit.
+    for (int i = 0; i < 4; i++) {
+      await _players[i].setSource(DeviceFileSource(samplePath(i)));
+    }
+
     _ready = true;
   }
 
@@ -140,6 +147,7 @@ class AudioEngine {
     _trackCustomPath[track] = null;
     _trackPresetIndex[track] = presetIndex;
     _trackNames[track] = kDrumPresets[presetIndex].name;
+    _scheduleSourceReload(track);
   }
 
   /// Override a track with a user-picked file (name derived from filename).
@@ -149,18 +157,32 @@ class AudioEngine {
     _trackNames[track] = filename.contains('.')
         ? filename.substring(0, filename.lastIndexOf('.'))
         : filename;
+    _scheduleSourceReload(track);
   }
 
   /// Override a track with a known path and explicit display [name].
   void setCustomPathWithName(int track, String path, String name) {
     _trackCustomPath[track] = path;
     _trackNames[track] = name;
+    _scheduleSourceReload(track);
   }
 
   /// Clear custom file override; track reverts to its current preset.
   void clearCustomPath(int track) {
     _trackCustomPath[track] = null;
     _trackNames[track] = kDrumPresets[_trackPresetIndex[track]].name;
+    _scheduleSourceReload(track);
+  }
+
+  /// Fire-and-forget source reload for [track]. Called after any path change
+  /// so that trigger() never needs to call setSource() in the real-time path.
+  void _scheduleSourceReload(int track) {
+    if (!_ready) return;
+    _players[track]
+        .setSource(DeviceFileSource(samplePath(track)))
+        .catchError((Object e) {
+      debugPrint('AudioEngine source reload error on track $track: $e');
+    });
   }
 
   /// Set trim points for [track]. Pass [start] and optional [end].
@@ -197,11 +219,8 @@ class AudioEngine {
     final gen = ++_triggerGen[track];
     _trimTimers[track]?.cancel();
     _trimTimers[track] = null;
-    final path = _trackCustomPath[track] ?? _presetPaths[_trackPresetIndex[track]];
     try {
       await _players[track].stop();
-      if (_triggerGen[track] != gen) return;
-      await _players[track].setSource(DeviceFileSource(path));
       if (_triggerGen[track] != gen) return;
       await _players[track].setVolume(_trackVolume[track]);
       if (_triggerGen[track] != gen) return;
@@ -266,7 +285,6 @@ class AudioEngine {
     final gen = ++_triggerGen[track];
     _trimTimers[track]?.cancel();
     _trimTimers[track] = null;
-    final path = _trackCustomPath[track] ?? _presetPaths[_trackPresetIndex[track]];
     final effectiveVolume = (_trackVolume[track] * velocity.clamp(0.0, 1.0)).clamp(0.0, 1.0);
     try {
       final start = _trimStart[track];
@@ -275,12 +293,10 @@ class AudioEngine {
 
       await _players[track].stop();
       if (_triggerGen[track] != gen) return;
+      await _players[track].setVolume(effectiveVolume);
+      if (_triggerGen[track] != gen) return;
 
       if (trimmed) {
-        await _players[track].setSource(DeviceFileSource(path));
-        if (_triggerGen[track] != gen) return;
-        await _players[track].setVolume(effectiveVolume);
-        if (_triggerGen[track] != gen) return;
         await _players[track].seek(start);
         if (_triggerGen[track] != gen) return;
         await _players[track].resume();
@@ -296,10 +312,9 @@ class AudioEngine {
           }
         }
       } else {
-        await _players[track].play(
-          DeviceFileSource(path),
-          volume: effectiveVolume,
-        );
+        await _players[track].seek(Duration.zero);
+        if (_triggerGen[track] != gen) return;
+        await _players[track].resume();
       }
     } catch (e) {
       debugPrint('AudioEngine trigger error: $e');

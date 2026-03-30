@@ -50,6 +50,64 @@ void main() {
   });
 
   // -------------------------------------------------------------------------
+  group('buildWav fade envelope', () {
+    // Build a WAV from a constant +1.0 signal so that any fade multiplier is
+    // directly visible in the encoded PCM values.
+    const int n = 2000; // longer than 2 × kWavFadeSamples
+    final constantSamples = Float64List(n)..fillRange(0, n, 1.0);
+
+    Uint8List? wav;
+    late ByteData pcm;
+
+    setUp(() {
+      wav = buildWav(constantSamples, _kSampleRate);
+      pcm = ByteData.sublistView(wav!);
+    });
+
+    int readPcm(int sampleIndex) =>
+        pcm.getInt16(44 + sampleIndex * 2, Endian.little);
+
+    test('first PCM sample is silent (fade-in starts at zero)', () {
+      expect(readPcm(0), 0,
+          reason: 'buildWav fade-in: sample[0] should be 0 — a non-zero first '
+              'sample causes an audible click when playback starts after silence');
+    });
+
+    test('last PCM sample is silent (fade-out ends at zero)', () {
+      expect(readPcm(n - 1), 0,
+          reason: 'buildWav fade-out: sample[${n - 1}] should be 0 — a non-zero '
+              'final sample causes an audible click when the file ends or loops');
+    });
+
+    test('mid-point sample is at full amplitude (fade region does not reach centre)', () {
+      final mid = readPcm(n ~/ 2);
+      expect(mid, closeTo(32767, 1),
+          reason: 'buildWav: sample[${n ~/ 2}] should be ~32767 — fade regions '
+              'must not reach the centre of a signal longer than 2×kWavFadeSamples');
+    });
+
+    test('fade-in is monotonically non-decreasing across the first kWavFadeSamples', () {
+      for (int i = 1; i < kWavFadeSamples; i++) {
+        final prev = readPcm(i - 1);
+        final curr = readPcm(i);
+        expect(curr, greaterThanOrEqualTo(prev),
+            reason: 'buildWav fade-in: PCM sample[$i] = $curr should be '
+                '>= sample[${i - 1}] = $prev — fade-in must increase monotonically');
+      }
+    });
+
+    test('fade-out is monotonically non-increasing across the last kWavFadeSamples', () {
+      for (int i = n - kWavFadeSamples + 1; i < n; i++) {
+        final prev = readPcm(i - 1);
+        final curr = readPcm(i);
+        expect(curr, lessThanOrEqualTo(prev),
+            reason: 'buildWav fade-out: PCM sample[$i] = $curr should be '
+                '<= sample[${i - 1}] = $prev — fade-out must decrease monotonically');
+      }
+    });
+  });
+
+  // -------------------------------------------------------------------------
   group('dspEnv', () {
     test('returns exactly 1.0 at i=0 (start of envelope)', () {
       expect(dspEnv(0, 100, 4.0), closeTo(1.0, 1e-10),
