@@ -220,6 +220,12 @@ class AudioEngine {
     _trimTimers[track]?.cancel();
     _trimTimers[track] = null;
     try {
+      // Silence before stopping to prevent a click from an abrupt amplitude
+      // cut mid-waveform. setVolume(0) takes effect at the next audio-buffer
+      // boundary (~5 ms), so by the time stop() fires the output is already
+      // at zero.
+      await _players[track].setVolume(0.0);
+      if (_triggerGen[track] != gen) return;
       await _players[track].stop();
       if (_triggerGen[track] != gen) return;
       await _players[track].setVolume(_trackVolume[track]);
@@ -291,6 +297,12 @@ class AudioEngine {
       final end = _trimEnd[track];
       final trimmed = start != Duration.zero || end != null;
 
+      // Silence before stopping to prevent a click from an abrupt amplitude
+      // cut mid-waveform (e.g. open hi-hat or cowbell retriggered rapidly).
+      // setVolume(0) takes effect at the next audio-buffer boundary (~5 ms),
+      // so by the time stop() fires the output is already at zero.
+      await _players[track].setVolume(0.0);
+      if (_triggerGen[track] != gen) return;
       await _players[track].stop();
       if (_triggerGen[track] != gen) return;
       await _players[track].setVolume(effectiveVolume);
