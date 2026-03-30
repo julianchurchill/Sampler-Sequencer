@@ -37,6 +37,41 @@ Every pull request that changes user-facing behaviour **must**:
 
 Pure housekeeping changes (CI config, docs, tooling) do not require a version bump, but should still note the change in `CHANGELOG.md` if it affects developers.
 
+## Pre-Commit Code Review
+
+Before committing any code change, perform a self-review of the diff. Work through the checklist below and fix any issues found before proceeding with the commit.
+
+### Style
+
+- Dart code follows the [Dart style guide](https://dart.dev/guides/language/effective-dart/style): `lowerCamelCase` for variables/methods, `UpperCamelCase` for types, `_private` prefix for private members.
+- No commented-out code, debug prints, or TODO comments left in (unless the TODO is tracked and intentional).
+- Consistent formatting — run `dart format` if in doubt.
+
+### Design
+
+- New logic is placed in the correct layer: business logic in `SequencerModel`, DSP/audio in `dsp_utils.dart` or `AudioEngine`, UI-only state in widgets.
+- No unnecessary abstractions introduced for a single use case.
+- No speculative future-proofing (feature flags, unused parameters, over-engineered inheritance).
+- Dependencies flow inward: UI → model → audio; never the reverse.
+
+### Potential Issues
+
+- No new platform-dependent code introduced into otherwise testable units.
+- No hard-coded magic numbers without a named constant.
+- No state mutation that bypasses `notifyListeners()`.
+- No `async` gaps that could leave the UI in a stale state (e.g. awaiting a fire-and-forget call and treating it as complete).
+- SharedPreferences keys are unique and follow the existing `_kPrefs*` naming convention.
+- No security issues: no command injection, no untrusted input used in file paths or shell commands.
+
+### Tests
+
+- Every new behaviour has a corresponding test written first (TDD).
+- All `expect()` calls have a `reason:` string explaining what is being checked and why.
+- Loop assertions include the failing index and value in the `reason:` string.
+- No tests were deleted or disabled without explicit justification.
+
+If the review surfaces issues, fix them before committing. Do not commit code that fails the review.
+
 ## Test-Driven Development (TDD)
 
 All new features and bug fixes must follow a TDD workflow:
