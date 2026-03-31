@@ -156,6 +156,14 @@ class AudioEngine {
       // ReleaseMode.release frees the SoundPool on completion, silencing
       // all other tracks that are still playing.
       await player.setReleaseMode(ReleaseMode.stop);
+      // AndroidAudioFocus.none: audioplayers' FocusManager requests audio
+      // focus on every play() regardless of player mode. Without this, each
+      // sequencer trigger steals audio focus from other tracks, causing
+      // Android to send AUDIOFOCUS_LOSS to the previously-focused player
+      // which then pauses or stops itself — cutting off long samples mid-play.
+      await player.setAudioContext(AudioContext(
+        android: AudioContextAndroid(audioFocus: AndroidAudioFocus.none),
+      ));
       _players.add(player);
     }
 
@@ -273,9 +281,11 @@ class AudioEngine {
         android: AudioContextAndroid(audioFocus: AndroidAudioFocus.none),
       ));
     } else {
-      // lowLatency (SoundPool): prevent shared SoundPool from being released
-      // when this track's sample finishes (same reason as in init()).
+      // lowLatency (SoundPool): same settings as in init().
       await player.setReleaseMode(ReleaseMode.stop);
+      await player.setAudioContext(AudioContext(
+        android: AudioContextAndroid(audioFocus: AndroidAudioFocus.none),
+      ));
     }
     await player.setSource(DeviceFileSource(samplePath(track)));
     _players[track] = player;
