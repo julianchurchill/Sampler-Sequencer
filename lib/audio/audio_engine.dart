@@ -151,6 +151,11 @@ class AudioEngine {
     for (int i = 0; i < 4; i++) {
       final player = AudioPlayer();
       await player.setPlayerMode(PlayerMode.lowLatency);
+      // ReleaseMode.stop prevents the shared SoundPool from being released
+      // when a sample finishes playing — without this, the default
+      // ReleaseMode.release frees the SoundPool on completion, silencing
+      // all other tracks that are still playing.
+      await player.setReleaseMode(ReleaseMode.stop);
       _players.add(player);
     }
 
@@ -267,6 +272,10 @@ class AudioEngine {
       await player.setAudioContext(AudioContext(
         android: AudioContextAndroid(audioFocus: AndroidAudioFocus.none),
       ));
+    } else {
+      // lowLatency (SoundPool): prevent shared SoundPool from being released
+      // when this track's sample finishes (same reason as in init()).
+      await player.setReleaseMode(ReleaseMode.stop);
     }
     await player.setSource(DeviceFileSource(samplePath(track)));
     _players[track] = player;
@@ -406,11 +415,11 @@ class AudioEngine {
 
       if (!trimmed && _playerModes[track] == PlayerMode.lowLatency) {
         // Fast path: SoundPool source is pre-loaded in memory.
-        // stop() cancels any previous play; play() fires in ~1 ms with no
-        // prepare() call. No soft-stop setVolume(0) needed — SoundPool
-        // stop() is a direct native call with no audio-thread buffering gap.
-        await _players[track].stop();
-        if (_triggerGen[track] != gen) return;
+        // play() fires in ~1 ms with no prepare() call.
+        // No explicit stop() here — all lowLatency players share one SoundPool
+        // instance; calling stop() on any player stops all streams across all
+        // tracks. SoundPool cuts the previous stream for this sound ID
+        // automatically when play() is called again.
         await _players[track].play(
           DeviceFileSource(path),
           volume: effectiveVolume,
