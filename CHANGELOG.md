@@ -16,7 +16,9 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   engine advances to the next slot and stops only *that* slot's previous stream —
   from two or more triggers ago, so its amplitude is well into decay. The stream
   from the immediately preceding trigger is left to play out naturally; the
-  waveform is never cut at peak amplitude.
+  waveform is never cut at peak amplitude. Four slots per track are used so
+  that even long samples such as HH Open (600 ms) decay to ~5 % amplitude
+  before their slot is reused at 120 BPM.
 
 ## [2.2.0] - 2026-03-31
 

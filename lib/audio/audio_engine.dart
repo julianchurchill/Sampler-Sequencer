@@ -43,13 +43,25 @@ const int _kSampleRate = 44100;
 
 /// Number of SoundPool player slots per sequencer track.
 ///
-/// Two slots per track enables ping-pong playback: on each trigger the engine
-/// advances to the next slot and stops only the player that was used *two or
-/// more triggers ago* — whose sample has had extra time to decay. The player
-/// used for the most recent previous trigger is left to play out naturally,
-/// so retriggering a long sound (e.g. Kick 808) before it has decayed to zero
-/// never abruptly cuts the waveform at high amplitude.
-const int _kSlotsPerTrack = 2;
+/// On each trigger the engine advances to the next slot (round-robin) and
+/// stops only that slot's previous stream — from [_kSlotsPerTrack] triggers
+/// ago. The stream from the immediately preceding trigger is left to play out
+/// naturally, so the waveform is never cut at peak amplitude.
+///
+/// The value must satisfy two constraints:
+///
+/// 1. **Click threshold** — the stopped stream's amplitude must be near-zero:
+///    `exp(-decayRate × elapsed / duration) < 0.05`. The worst case in the
+///    preset library is HH Open (600 ms, decayRate 3.5). At 120 BPM (125 ms
+///    per step) with 4 slots, elapsed = 4 × 125 = 500 ms:
+///    `exp(-3.5 × 500/600) ≈ 5 %` — just below the audible threshold.
+///
+/// 2. **SoundPool stream budget** — 4 tracks × _kSlotsPerTrack players share
+///    one SoundPool (maxStreams = 32). With 4 slots → 16 simultaneous streams
+///    maximum, leaving headroom well below the 32-stream hard limit.
+///
+/// Do not reduce this value — see CLAUDE.md "Ping-pong retrigger".
+const int _kSlotsPerTrack = 4;
 
 class AudioEngine {
   /// Sequencer players — [_kSlotsPerTrack] per track.
