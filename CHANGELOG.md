@@ -5,6 +5,11 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [2.1.2] - 2026-03-31
+
+### Fixed
+- Fixed crackling on rapid retrigger of the same track (e.g. two consecutive kick 808 hits). Android MediaPlayer transitions to **Stopped** state after `stop()`, from which `seekTo()` is an invalid operation; the silent seek caused `resume()` to start from an undefined position, producing crackling. Fixed by restoring `setSource()` after `stop()` in both the trimmed and untrimmed trigger paths, which moves the player back through Initialized → Prepared before seeking. The untrimmed path uses `play(Source)` which handles this in a single call.
+
 ## [2.1.1] - 2026-03-30
 
 ### Fixed

@@ -219,6 +219,7 @@ class AudioEngine {
     final gen = ++_triggerGen[track];
     _trimTimers[track]?.cancel();
     _trimTimers[track] = null;
+    final path = samplePath(track);
     try {
       // Silence before stopping to prevent a click from an abrupt amplitude
       // cut mid-waveform. setVolume(0) takes effect at the next audio-buffer
@@ -227,6 +228,12 @@ class AudioEngine {
       await _players[track].setVolume(0.0);
       if (_triggerGen[track] != gen) return;
       await _players[track].stop();
+      if (_triggerGen[track] != gen) return;
+      // setSource() is required after stop() because Android MediaPlayer
+      // transitions to Stopped state on stop(), from which seekTo() is invalid.
+      // Calling setSource() moves it back through Initialized → Prepared,
+      // making the subsequent seek() and resume() safe.
+      await _players[track].setSource(DeviceFileSource(path));
       if (_triggerGen[track] != gen) return;
       await _players[track].setVolume(_trackVolume[track]);
       if (_triggerGen[track] != gen) return;
@@ -291,6 +298,7 @@ class AudioEngine {
     final gen = ++_triggerGen[track];
     _trimTimers[track]?.cancel();
     _trimTimers[track] = null;
+    final path = samplePath(track);
     final effectiveVolume = (_trackVolume[track] * velocity.clamp(0.0, 1.0)).clamp(0.0, 1.0);
     try {
       final start = _trimStart[track];
@@ -305,10 +313,16 @@ class AudioEngine {
       if (_triggerGen[track] != gen) return;
       await _players[track].stop();
       if (_triggerGen[track] != gen) return;
-      await _players[track].setVolume(effectiveVolume);
-      if (_triggerGen[track] != gen) return;
 
       if (trimmed) {
+        // setSource() is required after stop() because Android MediaPlayer
+        // transitions to Stopped state on stop(), from which seekTo() is
+        // invalid. Calling setSource() moves it back through Initialized →
+        // Prepared, making the subsequent seek() and resume() safe.
+        await _players[track].setSource(DeviceFileSource(path));
+        if (_triggerGen[track] != gen) return;
+        await _players[track].setVolume(effectiveVolume);
+        if (_triggerGen[track] != gen) return;
         await _players[track].seek(start);
         if (_triggerGen[track] != gen) return;
         await _players[track].resume();
@@ -324,9 +338,12 @@ class AudioEngine {
           }
         }
       } else {
-        await _players[track].seek(Duration.zero);
-        if (_triggerGen[track] != gen) return;
-        await _players[track].resume();
+        // play(Source) handles setSource + prepare + start in one call,
+        // correctly resetting the MediaPlayer from Stopped → Playing state.
+        await _players[track].play(
+          DeviceFileSource(path),
+          volume: effectiveVolume,
+        );
       }
     } catch (e) {
       debugPrint('AudioEngine trigger error: $e');
