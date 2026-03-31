@@ -63,6 +63,18 @@ Before committing any code change, perform a self-review of the diff. Work throu
 - SharedPreferences keys are unique and follow the existing `_kPrefs*` naming convention.
 - No security issues: no command injection, no untrusted input used in file paths or shell commands.
 
+#### AudioEngine invariants (must survive any rewrite of `init()` or `_rebuildPlayer()`)
+
+Every `AudioPlayer` created in `AudioEngine` — sequencer players and the preview player — **must** have these three properties set before use:
+
+| Property | Value | Reason |
+|---|---|---|
+| `setReleaseMode` | `ReleaseMode.stop` | Prevents `soundPool.release()` on sample completion, which would free the shared SoundPool and silence all other tracks mid-play. |
+| `setAudioContext` | `AudioContextAndroid(audioFocus: AndroidAudioFocus.none)` | audioplayers' `FocusManager` requests `AUDIOFOCUS_GAIN` on every `play()` for **all** player modes including lowLatency/SoundPool. When any track triggers it steals focus, sending `AUDIOFOCUS_LOSS` to the other tracks which then stop themselves. Disabling focus management lets all 4 tracks play fully independently. This bug has been reintroduced twice (PRs #30-area and #33). |
+| `setPlayerMode` | `PlayerMode.lowLatency` (sequencer) or `PlayerMode.mediaPlayer` (preview/trim) | SoundPool gives ~1 ms trigger latency; mediaPlayer is required for `seek()`. |
+
+If you are touching `init()` or `_rebuildPlayer()`, verify all three are set on every player before committing.
+
 ### Tests
 
 - Every new behaviour has a corresponding test written first (TDD).
