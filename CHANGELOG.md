@@ -5,6 +5,13 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [2.2.0] - 2026-03-31
+
+### Changed
+- Sequencer players switched from `PlayerMode.mediaPlayer` (Android MediaPlayer) to `PlayerMode.lowLatency` (Android SoundPool). Preset WAV data is loaded into SoundPool memory once at startup; each trigger costs ~2 platform-channel calls with no per-hit `prepare()` overhead (~1 ms latency vs. the previous 30–100 ms). This eliminates the gap that caused crackling on consecutive hits of the same track (e.g. two kick 808s in a row).
+- A dedicated `_previewPlayer` in `mediaPlayer` mode is now the sole player that calls `seek()`. It handles trim preview, duration probing, and trimmed-track playback. This separation keeps seek latency out of the sequencer hot path entirely.
+- Tracks with trim points set are transparently switched to a `mediaPlayer`-mode sequencer player (via `setTrim`) and back to `lowLatency` (via `clearTrim`) so that seek remains available for trimmed playback without affecting untrimmed tracks.
+
 ## [2.1.1] - 2026-03-30
 
 ### Fixed
