@@ -415,11 +415,16 @@ class AudioEngine {
 
       if (!trimmed && _playerModes[track] == PlayerMode.lowLatency) {
         // Fast path: SoundPool source is pre-loaded in memory.
-        // play() fires in ~1 ms with no prepare() call.
-        // No explicit stop() here — all lowLatency players share one SoundPool
-        // instance; calling stop() on any player stops all streams across all
-        // tracks. SoundPool cuts the previous stream for this sound ID
-        // automatically when play() is called again.
+        // stop() nullifies the internal streamId so that the subsequent
+        // play() call goes through soundPool.play() to create a fresh stream.
+        // Without stop(), after a sample finishes naturally the streamId is
+        // still set, causing play() to call soundPool.resume() on a dead
+        // stream — which silently does nothing.
+        // With ReleaseMode.stop on all lowLatency players, stop() only halts
+        // this track's stream; it does not affect the shared SoundPool or
+        // any other track's active stream.
+        await _players[track].stop();
+        if (_triggerGen[track] != gen) return;
         await _players[track].play(
           DeviceFileSource(path),
           volume: effectiveVolume,
