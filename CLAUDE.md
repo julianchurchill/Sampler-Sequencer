@@ -75,6 +75,10 @@ Every `AudioPlayer` created in `AudioEngine` — sequencer players and the previ
 
 If you are touching `init()` or `_rebuildPlayer()`, verify all three are set on every player before committing.
 
+#### Ping-pong retrigger (do not collapse back to one player per track)
+
+Each track uses `_kSlotsPerTrack = 2` SoundPool players. On every untrimmed trigger the engine advances `_nextSlot[track]` and uses that slot's player — stopping only its *previous* stream (from ≥2 triggers ago, well into amplitude decay). The stream from the most recent previous trigger is left to play out naturally. This is the only way to avoid the retrigger click without a hardware-level crossfade: collapsing to one player per track forces `stop()` at peak amplitude on every rapid retrigger, producing an audible crack. The secondary slot (S=1) always stays `lowLatency`; only the primary slot (S=0) switches to `mediaPlayer` when trim is active.
+
 ### Tests
 
 - Every new behaviour has a corresponding test written first (TDD).

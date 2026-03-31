@@ -5,6 +5,19 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [2.2.1] - 2026-03-31
+
+### Fixed
+- Eliminated retrigger click when the same sample is fired before the previous
+  hit has decayed to silence (e.g. two Kick 808s on adjacent steps). Root cause:
+  `stop()` on a SoundPool stream abruptly zeros the audio output at whatever
+  amplitude the waveform is at, producing a sharp click transient. Fix: each
+  track now uses two SoundPool players (ping-pong slots). On every trigger the
+  engine advances to the next slot and stops only *that* slot's previous stream —
+  from two or more triggers ago, so its amplitude is well into decay. The stream
+  from the immediately preceding trigger is left to play out naturally; the
+  waveform is never cut at peak amplitude.
+
 ## [2.2.0] - 2026-03-31
 
 ### Changed

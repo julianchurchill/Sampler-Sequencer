@@ -41,18 +41,33 @@ const List<int> kDefaultPresetIndices = [0, 2, 4, 5];
 
 const int _kSampleRate = 44100;
 
+/// Number of SoundPool player slots per sequencer track.
+///
+/// Two slots per track enables ping-pong playback: on each trigger the engine
+/// advances to the next slot and stops only the player that was used *two or
+/// more triggers ago* — whose sample has had extra time to decay. The player
+/// used for the most recent previous trigger is left to play out naturally,
+/// so retriggering a long sound (e.g. Kick 808) before it has decayed to zero
+/// never abruptly cuts the waveform at high amplitude.
+const int _kSlotsPerTrack = 2;
+
 class AudioEngine {
-  /// Four sequencer players, one per track.
+  /// Sequencer players — [_kSlotsPerTrack] per track.
   ///
-  /// Initialised as [PlayerMode.lowLatency] (Android SoundPool). Sources are
-  /// pre-loaded into SoundPool memory so that [trigger] fires in ~1 ms with
-  /// no per-hit prepare() overhead — essential for a drum machine.
-  /// Tracks that have trim points set are switched to [PlayerMode.mediaPlayer]
-  /// because SoundPool does not support seek().
+  /// Player for track T, slot S lives at index T * _kSlotsPerTrack + S.
+  ///
+  /// All slots are initialised as [PlayerMode.lowLatency] (Android SoundPool).
+  /// When a track has trim points the PRIMARY slot (S=0) is switched to
+  /// [PlayerMode.mediaPlayer] so that seek() is available; the secondary slot
+  /// (S=1) remains lowLatency but is unused while trim is active.
   final List<AudioPlayer> _players = [];
 
-  /// Tracks the current player mode for each sequencer player so that
-  /// [trigger] can take the correct fast or trimmed code path.
+  /// Which slot within a track's player pair will be used on the NEXT trigger.
+  /// Alternates between 0 and 1 on every untrimmed trigger.
+  final List<int> _nextSlot = List.filled(4, 0);
+
+  /// Tracks the current player mode for the PRIMARY slot of each track so
+  /// that [trigger] can take the correct fast or trimmed code path.
   final List<PlayerMode> _playerModes =
       List.filled(4, PlayerMode.lowLatency);
 
@@ -129,9 +144,15 @@ class AudioEngine {
   bool hasTrim(int track) =>
       _trimStart[track] != Duration.zero || _trimEnd[track] != null;
 
+  /// Primary player index for [track] (slot 0 — used for trimmed playback).
+  int _primary(int track) => track * _kSlotsPerTrack;
+
   Future<void> setTrackVolume(int track, double volume) async {
     _trackVolume[track] = volume.clamp(0.0, 1.0);
-    await _players[track].setVolume(_trackVolume[track]);
+    // Apply to both slots so whichever is currently playing reflects the change.
+    for (int s = 0; s < _kSlotsPerTrack; s++) {
+      await _players[track * _kSlotsPerTrack + s].setVolume(_trackVolume[track]);
+    }
   }
 
   Future<void> init() async {
@@ -145,37 +166,42 @@ class AudioEngine {
       _presetPaths.add(path);
     }
 
-    // Four low-latency sequencer players (Android SoundPool).
-    // SoundPool pre-loads audio data into memory; play() fires in ~1 ms
-    // with no per-hit prepare() call — essential for a drum machine.
-    for (int i = 0; i < 4; i++) {
+    // Two low-latency SoundPool players per track (8 total).
+    //
+    // Ping-pong retrigger: on each trigger the engine uses the NEXT slot and
+    // stops only that slot's previous stream (from 2+ triggers ago, amplitude
+    // well into decay). The slot used for the IMMEDIATELY preceding trigger is
+    // left playing, so the waveform is never cut at peak amplitude — the root
+    // cause of retrigger clicks on long samples such as Kick 808.
+    //
+    // AudioEngine invariants for every AudioPlayer created here or in
+    // _rebuildPlayer() — see CLAUDE.md "AudioEngine invariants":
+    //   • ReleaseMode.stop   — prevents shared SoundPool from being released
+    //                          on sample completion (would silence all tracks).
+    //   • AudioFocus.none    — prevents each trigger stealing focus from other
+    //                          tracks via FocusManager (would cut them off).
+    //   • PlayerMode         — lowLatency for sequencer (SoundPool, ~1 ms);
+    //                          mediaPlayer for trim/preview (seek support).
+    for (int i = 0; i < 4 * _kSlotsPerTrack; i++) {
       final player = AudioPlayer();
       await player.setPlayerMode(PlayerMode.lowLatency);
-      // ReleaseMode.stop prevents the shared SoundPool from being released
-      // when a sample finishes playing — without this, the default
-      // ReleaseMode.release frees the SoundPool on completion, silencing
-      // all other tracks that are still playing.
       await player.setReleaseMode(ReleaseMode.stop);
-      // AndroidAudioFocus.none: audioplayers' FocusManager requests audio
-      // focus on every play() regardless of player mode. Without this, each
-      // sequencer trigger steals audio focus from other tracks, causing
-      // Android to send AUDIOFOCUS_LOSS to the previously-focused player
-      // which then pauses or stops itself — cutting off long samples mid-play.
       await player.setAudioContext(AudioContext(
         android: AudioContextAndroid(audioFocus: AndroidAudioFocus.none),
       ));
       _players.add(player);
     }
 
-    // Pre-load each track's source into SoundPool memory so the first
-    // trigger fires immediately without any load delay.
+    // Pre-load each track's source into SoundPool memory for both slots so
+    // the first trigger fires immediately without any load delay.
     for (int i = 0; i < 4; i++) {
-      await _players[i].setSource(DeviceFileSource(samplePath(i)));
+      for (int s = 0; s < _kSlotsPerTrack; s++) {
+        await _players[i * _kSlotsPerTrack + s]
+            .setSource(DeviceFileSource(samplePath(i)));
+      }
     }
 
     // One dedicated mediaPlayer for trim preview and duration probing.
-    // It is the only player that calls seek(); keeping it separate means
-    // the sequencer players are never blocked by seek latency.
     _previewPlayer = AudioPlayer();
     await _previewPlayer.setPlayerMode(PlayerMode.mediaPlayer);
     await _previewPlayer.setReleaseMode(ReleaseMode.stop);
@@ -222,15 +248,17 @@ class AudioEngine {
     _scheduleSourceReload(track);
   }
 
-  /// Reload the source for [track]'s sequencer player.
+  /// Reload the source for [track]'s sequencer players (all slots).
   /// Fire-and-forget; called after any path change.
   void _scheduleSourceReload(int track) {
     if (!_ready) return;
-    _players[track]
-        .setSource(DeviceFileSource(samplePath(track)))
-        .catchError((Object e) {
-      debugPrint('AudioEngine source reload error on track $track: $e');
-    });
+    for (int s = 0; s < _kSlotsPerTrack; s++) {
+      _players[track * _kSlotsPerTrack + s]
+          .setSource(DeviceFileSource(samplePath(track)))
+          .catchError((Object e) {
+        debugPrint('AudioEngine source reload error on track $track slot $s: $e');
+      });
+    }
   }
 
   // ---------------------------------------------------------------------------
@@ -239,7 +267,7 @@ class AudioEngine {
 
   /// Set trim points for [track].
   ///
-  /// If any trim is applied, the sequencer player is switched from
+  /// If any trim is applied, the primary sequencer player is switched from
   /// lowLatency to mediaPlayer so that seek() becomes available at trigger time.
   void setTrim(int track, Duration start, Duration? end) {
     _trimStart[track] = start;
@@ -253,14 +281,14 @@ class AudioEngine {
 
   /// Clear trim for [track]; sample plays from beginning to end.
   ///
-  /// Switches the sequencer player back to lowLatency for fast triggering.
+  /// Switches the primary sequencer player back to lowLatency for fast triggering.
   void clearTrim(int track) {
     _trimStart[track] = Duration.zero;
     _trimEnd[track] = null;
     _schedulePlayerModeSwitch(track, PlayerMode.lowLatency);
   }
 
-  /// Asynchronously rebuild [track]'s sequencer player in [mode].
+  /// Asynchronously rebuild [track]'s primary sequencer player in [mode].
   /// Fire-and-forget so setTrim/clearTrim remain synchronous.
   void _schedulePlayerModeSwitch(int track, PlayerMode mode) {
     if (!_ready) return;
@@ -271,24 +299,22 @@ class AudioEngine {
     });
   }
 
+  /// Rebuild the PRIMARY player for [track] in [mode].
+  ///
+  /// Only the primary slot (S=0) is ever rebuilt — it switches between
+  /// lowLatency (untrimmed) and mediaPlayer (trimmed). The secondary slot
+  /// (S=1) always remains lowLatency.
   Future<void> _rebuildPlayer(int track, PlayerMode mode) async {
-    final old = _players[track];
+    final idx = _primary(track);
+    final old = _players[idx];
     final player = AudioPlayer();
     await player.setPlayerMode(mode);
-    if (mode == PlayerMode.mediaPlayer) {
-      await player.setReleaseMode(ReleaseMode.stop);
-      await player.setAudioContext(AudioContext(
-        android: AudioContextAndroid(audioFocus: AndroidAudioFocus.none),
-      ));
-    } else {
-      // lowLatency (SoundPool): same settings as in init().
-      await player.setReleaseMode(ReleaseMode.stop);
-      await player.setAudioContext(AudioContext(
-        android: AudioContextAndroid(audioFocus: AndroidAudioFocus.none),
-      ));
-    }
+    await player.setReleaseMode(ReleaseMode.stop);
+    await player.setAudioContext(AudioContext(
+      android: AudioContextAndroid(audioFocus: AndroidAudioFocus.none),
+    ));
     await player.setSource(DeviceFileSource(samplePath(track)));
-    _players[track] = player;
+    _players[idx] = player;
     await old.dispose();
   }
 
@@ -357,20 +383,23 @@ class AudioEngine {
   Future<void> stopTrack(int track) async {
     if (!_ready) return;
     ++_triggerGen[track];
+    _nextSlot[track] = 0;
     _trimTimers[track]?.cancel();
     _trimTimers[track] = null;
     ++_previewGen;
     _previewTimer?.cancel();
     _previewTimer = null;
     try {
-      await Future.wait([
-        _players[track].stop().catchError((Object e) {
-          debugPrint('AudioEngine stopTrack player error: $e');
-        }),
+      final stops = <Future<void>>[
+        for (int s = 0; s < _kSlotsPerTrack; s++)
+          _players[track * _kSlotsPerTrack + s].stop().catchError((Object e) {
+            debugPrint('AudioEngine stopTrack player error (slot $s): $e');
+          }),
         _previewPlayer.stop().catchError((Object e) {
           debugPrint('AudioEngine stopTrack preview error: $e');
         }),
-      ]);
+      ];
+      await Future.wait(stops);
     } catch (e) {
       debugPrint('AudioEngine stopTrack error: $e');
     }
@@ -379,8 +408,9 @@ class AudioEngine {
   /// Stop all tracks immediately (e.g. when the sequencer is stopped).
   Future<void> stopAll() async {
     if (!_ready) return;
-    for (int t = 0; t < _players.length; t++) {
+    for (int t = 0; t < 4; t++) {
       ++_triggerGen[t];
+      _nextSlot[t] = 0;
       _trimTimers[t]?.cancel();
       _trimTimers[t] = null;
     }
@@ -388,9 +418,9 @@ class AudioEngine {
     _previewTimer?.cancel();
     _previewTimer = null;
     await Future.wait([
-      for (int t = 0; t < _players.length; t++)
-        _players[t].stop().catchError((e) {
-          debugPrint('AudioEngine stopAll error on track $t: $e');
+      for (int i = 0; i < _players.length; i++)
+        _players[i].stop().catchError((e) {
+          debugPrint('AudioEngine stopAll error on player $i: $e');
           return;
         }),
       _previewPlayer.stop().catchError((e) {
@@ -402,10 +432,12 @@ class AudioEngine {
 
   /// Trigger a one-shot hit on [track].
   ///
-  /// **Untrimmed tracks** (lowLatency mode): [stop] + [play] with the
-  /// pre-loaded SoundPool source — ~2 platform-channel calls, ~1 ms latency,
-  /// no prepare() overhead. This eliminates the 30–100 ms gap that caused
-  /// crackling on consecutive hits with the previous MediaPlayer approach.
+  /// **Untrimmed tracks** (lowLatency mode): ping-pong between two SoundPool
+  /// players. On each trigger the engine advances to the next slot and stops
+  /// only that slot's previous stream — from two or more triggers ago, so its
+  /// amplitude is well into the decay curve. The stream from the immediately
+  /// preceding trigger is left to play out naturally; the waveform is never
+  /// cut at peak amplitude, eliminating the retrigger click.
   ///
   /// **Trimmed tracks** (mediaPlayer mode): the slower stop/setSource/seek/
   /// resume chain is unavoidable because SoundPool does not support seek().
@@ -424,48 +456,48 @@ class AudioEngine {
       final trimmed = start != Duration.zero || end != null;
 
       if (!trimmed && _playerModes[track] == PlayerMode.lowLatency) {
-        // Fast path: SoundPool source is pre-loaded in memory.
-        // stop() nullifies the internal streamId so that the subsequent
-        // play() call goes through soundPool.play() to create a fresh stream.
-        // Without stop(), after a sample finishes naturally the streamId is
-        // still set, causing play() to call soundPool.resume() on a dead
-        // stream — which silently does nothing.
-        // With ReleaseMode.stop on all lowLatency players, stop() only halts
-        // this track's stream; it does not affect the shared SoundPool or
-        // any other track's active stream.
-        await _players[track].stop();
+        // Ping-pong fast path.
+        //
+        // Advance to the next slot. The slot we are about to use held the
+        // stream from _kSlotsPerTrack triggers ago — enough time for the
+        // sample to have decayed significantly, so stopping it now is
+        // inaudible (or near-inaudible). The OTHER slot's stream (from the
+        // most recent trigger) is left untouched and plays out naturally.
+        final slot = _nextSlot[track];
+        _nextSlot[track] = (slot + 1) % _kSlotsPerTrack;
+        final player = _players[track * _kSlotsPerTrack + slot];
+
+        // stop() nullifies the internal streamId so play() creates a fresh
+        // SoundPool stream rather than resuming a stale one.
+        await player.stop();
         if (_triggerGen[track] != gen) return;
-        await _players[track].play(
-          DeviceFileSource(path),
-          volume: effectiveVolume,
-        );
+        await player.play(DeviceFileSource(path), volume: effectiveVolume);
       } else {
         // MediaPlayer path: required for trimmed playback (seek) or when a
         // clearTrim() mode switch back to lowLatency hasn't completed yet.
+        final player = _players[_primary(track)];
         if (trimmed && _playerModes[track] != PlayerMode.mediaPlayer) {
-          // setTrim() was called but async rebuild hasn't finished yet.
-          // Force a synchronous rebuild before proceeding.
           await _rebuildPlayer(track, PlayerMode.mediaPlayer);
           if (_triggerGen[track] != gen) return;
         }
-        await _players[track].setVolume(0.0);
+        await player.setVolume(0.0);
         if (_triggerGen[track] != gen) return;
-        await _players[track].stop();
+        await player.stop();
         if (_triggerGen[track] != gen) return;
-        await _players[track].setSource(DeviceFileSource(path));
+        await player.setSource(DeviceFileSource(path));
         if (_triggerGen[track] != gen) return;
-        await _players[track].setVolume(effectiveVolume);
+        await player.setVolume(effectiveVolume);
         if (_triggerGen[track] != gen) return;
-        await _players[track].seek(trimmed ? start : Duration.zero);
+        await player.seek(trimmed ? start : Duration.zero);
         if (_triggerGen[track] != gen) return;
-        await _players[track].resume();
+        await player.resume();
         if (_triggerGen[track] != gen) return;
         if (trimmed && end != null) {
           final playDuration = end - start;
           if (playDuration > Duration.zero) {
             _trimTimers[track] = Timer(playDuration, () {
               if (_triggerGen[track] == gen) {
-                _players[track].stop();
+                _players[_primary(track)].stop();
               }
             });
           }
