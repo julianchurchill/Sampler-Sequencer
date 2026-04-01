@@ -5,6 +5,14 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [Unreleased]
+
+### Changed
+- CI now signs release APKs with a persistent keystore stored as a GitHub
+  Actions secret (`RELEASE_KEYSTORE_BASE64`). Previously the debug keystore
+  was regenerated on every runner, so each build produced a differently-signed
+  APK that Android refused to install over an existing installation.
+
 ## [2.2.2] - 2026-04-01
 
 ### Fixed
