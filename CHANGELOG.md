@@ -5,6 +5,16 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [2.2.3] - 2026-04-01
+
+### Fixed
+- Fixed retrigger click regression introduced in 2.2.2: replacing `play(source)`
+  with `setVolume()` + `resume()` caused `SoundPoolPlayer.resume()` to silently
+  fail with "NotPrepared" because `stop()` resets the `prepared` flag that
+  `resume()` checks before calling `start()`. Reverted to `play(source)` in the
+  fast trigger path, which re-establishes `prepared` via `setSource()` before
+  resuming — the only reliable way to restart a stopped SoundPool player.
+
 ## [Unreleased]
 
 ### Changed

@@ -487,27 +487,19 @@ class AudioEngine {
         _nextSlot[track] = (slot + 1) % _kSlotsPerTrack;
         final player = _players[track * _kSlotsPerTrack + slot];
 
-        // stop() nullifies the internal streamId so the next start() call
+        // stop() nullifies the internal streamId so the next play() call
         // creates a fresh SoundPool stream via soundPool.play(soundId, ...).
+        //
+        // Do NOT replace play(source) with setVolume()+resume() here.
+        // SoundPoolPlayer.resume() on Android checks a `prepared` flag before
+        // calling start(). stop() resets that flag, so resume() after stop()
+        // silently errors with "NotPrepared" and no new stream is ever started.
+        // play(source) calls setSource() first, which re-establishes `prepared`
+        // via the urlToPlayers cache before calling resume() — this is the only
+        // reliable way to restart a stopped SoundPool player.
         await player.stop();
         if (_triggerGen[track] != gen) return;
-        // Use setVolume + resume rather than play(source) here.
-        //
-        // play(source) calls setSource() internally on every trigger.
-        // audioplayers' SoundPoolManager.urlToPlayers cache appends an entry
-        // on EVERY setSource() call — even cache-hits — and never removes them.
-        // After a few minutes of continuous playback the list has thousands of
-        // entries; the synchronized(urlToPlayers) block becomes contended across
-        // all 4 × 6 = 24 concurrent platform-channel calls, introducing timing
-        // jitter that causes stop() to arrive at SoundPool before the previous
-        // stream has fully decayed → click. setSource() was already called for
-        // each slot in init() and is repeated by _scheduleSourceReload() on any
-        // path change, so soundId is pre-established. After stop() nullifies
-        // streamId, resume() → start() → soundPool.play(soundId, volume, ...)
-        // starts a fresh stream with no repeated loading or cache pollution.
-        await player.setVolume(effectiveVolume);
-        if (_triggerGen[track] != gen) return;
-        await player.resume();
+        await player.play(DeviceFileSource(path), volume: effectiveVolume);
       } else {
         // MediaPlayer path: required for trimmed playback (seek) or when a
         // clearTrim() mode switch back to lowLatency hasn't completed yet.
