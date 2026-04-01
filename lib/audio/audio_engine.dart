@@ -53,15 +53,23 @@ const int _kSampleRate = 44100;
 /// 1. **Click threshold** — the stopped stream's amplitude must be near-zero:
 ///    `exp(-decayRate × elapsed / duration) < 0.05`. The worst case in the
 ///    preset library is HH Open (600 ms, decayRate 3.5). At 120 BPM (125 ms
-///    per step) with 4 slots, elapsed = 4 × 125 = 500 ms:
-///    `exp(-3.5 × 500/600) ≈ 5 %` — just below the audible threshold.
+///    per step) with 6 slots, elapsed = 6 × 125 = 750 ms:
+///    - Kick 808 (500 ms, decayRate 4.0): `exp(-4.0 × 750/500) ≈ 0.25 %` ✓
+///    - HH Open  (600 ms, decayRate 3.5): `exp(-3.5 × 750/600) ≈ 1.3 %`  ✓
+///    - Cowbell  (800 ms, decayRate 6.0): `exp(-6.0 × 750/800) ≈ 1.1 %`  ✓
+///
+///    4 slots was not enough: slot reuse happened at exactly 500 ms for
+///    Kick 808 — the same as its sample duration. `stop()` arrived in a
+///    race with SoundPool's own natural-completion cleanup at the fade-out
+///    boundary, occasionally producing a click on the 6th consecutive hit.
+///    6 slots push the reuse point to 750 ms, well past every preset's end.
 ///
 /// 2. **SoundPool stream budget** — 4 tracks × _kSlotsPerTrack players share
-///    one SoundPool (maxStreams = 32). With 4 slots → 16 simultaneous streams
+///    one SoundPool (maxStreams = 32). With 6 slots → 24 simultaneous streams
 ///    maximum, leaving headroom well below the 32-stream hard limit.
 ///
 /// Do not reduce this value — see CLAUDE.md "Ping-pong retrigger".
-const int _kSlotsPerTrack = 4;
+const int _kSlotsPerTrack = 6;
 
 class AudioEngine {
   /// Sequencer players — [_kSlotsPerTrack] per track.
@@ -479,11 +487,27 @@ class AudioEngine {
         _nextSlot[track] = (slot + 1) % _kSlotsPerTrack;
         final player = _players[track * _kSlotsPerTrack + slot];
 
-        // stop() nullifies the internal streamId so play() creates a fresh
-        // SoundPool stream rather than resuming a stale one.
+        // stop() nullifies the internal streamId so the next start() call
+        // creates a fresh SoundPool stream via soundPool.play(soundId, ...).
         await player.stop();
         if (_triggerGen[track] != gen) return;
-        await player.play(DeviceFileSource(path), volume: effectiveVolume);
+        // Use setVolume + resume rather than play(source) here.
+        //
+        // play(source) calls setSource() internally on every trigger.
+        // audioplayers' SoundPoolManager.urlToPlayers cache appends an entry
+        // on EVERY setSource() call — even cache-hits — and never removes them.
+        // After a few minutes of continuous playback the list has thousands of
+        // entries; the synchronized(urlToPlayers) block becomes contended across
+        // all 4 × 6 = 24 concurrent platform-channel calls, introducing timing
+        // jitter that causes stop() to arrive at SoundPool before the previous
+        // stream has fully decayed → click. setSource() was already called for
+        // each slot in init() and is repeated by _scheduleSourceReload() on any
+        // path change, so soundId is pre-established. After stop() nullifies
+        // streamId, resume() → start() → soundPool.play(soundId, volume, ...)
+        // starts a fresh stream with no repeated loading or cache pollution.
+        await player.setVolume(effectiveVolume);
+        if (_triggerGen[track] != gen) return;
+        await player.resume();
       } else {
         // MediaPlayer path: required for trimmed playback (seek) or when a
         // clearTrim() mode switch back to lowLatency hasn't completed yet.

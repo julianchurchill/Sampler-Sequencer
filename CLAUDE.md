@@ -77,7 +77,11 @@ If you are touching `init()` or `_rebuildPlayer()`, verify all three are set on 
 
 #### Ping-pong retrigger (do not collapse back to one player per track)
 
-Each track uses `_kSlotsPerTrack = 4` SoundPool players. On every untrimmed trigger the engine advances `_nextSlot[track]` and uses that slot's player — stopping only its *previous* stream (from ≥2 triggers ago, well into amplitude decay). The stream from the most recent previous trigger is left to play out naturally. This is the only way to avoid the retrigger click without a hardware-level crossfade: collapsing to one player per track forces `stop()` at peak amplitude on every rapid retrigger, producing an audible crack. The secondary slot (S=1) always stays `lowLatency`; only the primary slot (S=0) switches to `mediaPlayer` when trim is active.
+Each track uses `_kSlotsPerTrack = 6` SoundPool players. On every untrimmed trigger the engine advances `_nextSlot[track]` and uses that slot's player — stopping only its *previous* stream (from ≥2 triggers ago, well into amplitude decay). The stream from the most recent previous trigger is left to play out naturally. This is the only way to avoid the retrigger click without a hardware-level crossfade: collapsing to one player per track forces `stop()` at peak amplitude on every rapid retrigger, producing an audible crack. The secondary slot (S=1) always stays `lowLatency`; only the primary slot (S=0) switches to `mediaPlayer` when trim is active.
+
+**Why 6 slots, not 4:** at 120 BPM (125 ms/step), 4 slots caused slot reuse at exactly 500 ms — the same as the Kick 808 sample duration. `stop()` arrived in a race with SoundPool's natural-completion cleanup at the fade-out boundary, occasionally producing a click on the 6th+ consecutive hit. 6 slots push reuse to 750 ms, 250 ms past every preset's end.
+
+**Do not use `play(source)` in the fast trigger path.** Use `setVolume()` + `resume()` instead. `play(source)` calls `setSource()` internally on every trigger; audioplayers' `SoundPoolManager.urlToPlayers` appends an entry on every `setSource()` call (even cache-hits) and never removes them. After minutes of continuous playback the list has thousands of entries; lock contention on the synchronized block introduces timing jitter that eventually causes `stop()` to arrive before sufficient decay → click. `setSource()` is called once per slot in `init()` and re-called by `_scheduleSourceReload()` on any path change — that is sufficient.
 
 ### Tests
 

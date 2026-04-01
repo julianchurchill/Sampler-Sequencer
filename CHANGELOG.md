@@ -5,6 +5,28 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [2.2.2] - 2026-04-01
+
+### Fixed
+- Fixed audio quality degrading after prolonged playback, eventually causing
+  retrigger clicks even on simple 2-step patterns. Root cause: the fast trigger
+  path called `play(source)` on every hit, which internally calls `setSource()`
+  each time. audioplayers' `SoundPoolManager` appends an entry to its
+  `urlToPlayers` cache on every `setSource()` call — even on cache-hits — and
+  never removes entries. After minutes of continuous playback the list grew to
+  thousands of entries; lock contention on the synchronized cache block
+  introduced timing jitter that caused `stop()` to arrive at SoundPool before
+  the previous stream had fully decayed, producing a click. Fix: use
+  `setVolume()` + `resume()` in the fast path instead, relying on the
+  `setSource()` already called per slot in `init()`.
+- Fixed click on the 6th+ consecutive Kick 808 hit. With 4 slots per track at
+  120 BPM, slot reuse occurred at exactly 500 ms — the same as the Kick 808
+  sample duration — creating a race between `stop()` and SoundPool's own
+  natural-completion cleanup at the WAV fade-out boundary. Increased
+  `_kSlotsPerTrack` from 4 to 6; slot reuse now occurs at 750 ms, 250 ms past
+  every preset's natural end, ensuring `stop()` is always a confirmed no-op on
+  an already-silent stream.
+
 ## [2.2.1] - 2026-03-31
 
 ### Fixed
