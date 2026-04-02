@@ -1,0 +1,12 @@
+{
+  "issues": [],
+  "executions": [],
+  "totalDurationMs": 0,
+  "summary": {
+    "total": 0,
+    "succeeded": 0,
+    "failed": 0,
+    "timedOut": 0,
+    "skipped": 0
+  }
+}
