@@ -137,6 +137,16 @@ class AudioEngine {
   /// can await it before using a partially-initialised player.
   final List<Future<void>?> _pendingRebuild = List.filled(kNumTracks, null);
 
+  /// Per-track cached source path for the primary (slot 0) player.
+  ///
+  /// Prevents redundant `setSource()` calls in the trimmed trigger path.
+  /// audioplayers' `SoundPoolManager.urlToPlayers` appends an entry on every
+  /// `setSource()` call (even cache-hits) and never removes them — after
+  /// minutes of continuous playback lock contention causes timing jitter and
+  /// clicks. By caching the last path set, `trigger()` only calls `setSource()`
+  /// when the path has actually changed.
+  final List<String?> _primarySourcePath = List.filled(kNumTracks, null);
+
   bool _ready = false;
 
   /// Monotonically increasing counter per track. When a new trigger arrives
@@ -224,6 +234,7 @@ class AudioEngine {
         await _players[i * _kSlotsPerTrack + s]
             .setSource(DeviceFileSource(samplePath(i)));
       }
+      _primarySourcePath[i] = samplePath(i);
     }
 
     // One dedicated mediaPlayer for trim preview and duration probing.
@@ -277,6 +288,7 @@ class AudioEngine {
   /// Fire-and-forget; called after any path change.
   void _scheduleSourceReload(int track) {
     if (!_ready) return;
+    _primarySourcePath[track] = null; // Force setSource on next trimmed trigger
     for (int s = 0; s < _kSlotsPerTrack; s++) {
       _players[track * _kSlotsPerTrack + s]
           .setSource(DeviceFileSource(samplePath(track)))
@@ -347,6 +359,7 @@ class AudioEngine {
       android: AudioContextAndroid(audioFocus: AndroidAudioFocus.none),
     ));
     await player.setSource(DeviceFileSource(samplePath(track)));
+    _primarySourcePath[track] = samplePath(track);
     _players[idx] = player;
     await old.dispose();
   }
@@ -542,8 +555,14 @@ class AudioEngine {
         if (_triggerGen[track] != gen) return;
         await player.stop();
         if (_triggerGen[track] != gen) return;
-        await player.setSource(DeviceFileSource(path));
-        if (_triggerGen[track] != gen) return;
+        // Only call setSource() when the path has changed — see CLAUDE.md
+        // "Do not use play(source) in the fast trigger path". audioplayers'
+        // urlToPlayers cache leaks an entry on every setSource() call.
+        if (_primarySourcePath[track] != path) {
+          await player.setSource(DeviceFileSource(path));
+          _primarySourcePath[track] = path;
+          if (_triggerGen[track] != gen) return;
+        }
         await player.setVolume(effectiveVolume);
         if (_triggerGen[track] != gen) return;
         await player.seek(trimmed ? start : Duration.zero);
