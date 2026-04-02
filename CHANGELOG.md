@@ -5,6 +5,21 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [1.8.1] - 2026-04-02
+
+### Fixed
+- Eliminated click on the 2nd adjacent Kick 808 hit caused by two overlapping
+  streams summing to ~1.19× peak amplitude in the Android audio mixer (hard
+  clipping). Reduced Kick 808 amplitude from 0.9 to 0.72; two adjacent hits
+  now sum to ≤ 0.95 at 120 BPM.
+
+### Changed
+- Extracted DSP/WAV helpers (`buildWav`, `dspEnv`, all drum generators) from
+  `audio_engine.dart` into `lib/audio/dsp_utils.dart` so they are importable
+  in tests. Added `mocktail` dev dependency and initial test suite covering
+  WAV header structure, envelope behaviour, sample counts, normalisation range,
+  and the Kick 808 mixer-clipping regression.
+
 ## [1.8.0] - 2026-03-29
 
 ### Changed
