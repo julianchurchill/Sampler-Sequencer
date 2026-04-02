@@ -6,6 +6,7 @@ import 'package:audioplayers/audioplayers.dart';
 import 'package:flutter/foundation.dart';
 import 'package:path_provider/path_provider.dart';
 
+import '../constants.dart' show kNumTracks;
 import 'dsp_utils.dart';
 
 // ---------------------------------------------------------------------------
@@ -84,12 +85,12 @@ class AudioEngine {
 
   /// Which slot within a track's player pair will be used on the NEXT trigger.
   /// Alternates between 0 and 1 on every untrimmed trigger.
-  final List<int> _nextSlot = List.filled(4, 0);
+  final List<int> _nextSlot = List.filled(kNumTracks, 0);
 
   /// Tracks the current player mode for the PRIMARY slot of each track so
   /// that [trigger] can take the correct fast or trimmed code path.
   final List<PlayerMode> _playerModes =
-      List.filled(4, PlayerMode.lowLatency);
+      List.filled(kNumTracks, PlayerMode.lowLatency);
 
   /// Dedicated mediaPlayer used for trim preview and duration probing.
   /// Kept separate so that seek-based operations are isolated from the
@@ -108,36 +109,39 @@ class AudioEngine {
   final List<int> _trackPresetIndex = List.from(kDefaultPresetIndices);
 
   /// Per-track custom file override (null = use preset).
-  final List<String?> _trackCustomPath = List.filled(4, null);
+  final List<String?> _trackCustomPath = List.filled(kNumTracks, null);
 
   /// Per-track volume (0.0–1.0, default 1.0).
-  final List<double> _trackVolume = List.filled(4, 1.0);
+  final List<double> _trackVolume = List.filled(kNumTracks, 1.0);
 
   /// Per-track trim start (default Duration.zero).
-  final List<Duration> _trimStart = List.filled(4, Duration.zero);
+  final List<Duration> _trimStart = List.filled(kNumTracks, Duration.zero);
 
   /// Per-track trim end (null = play to end of sample).
-  final List<Duration?> _trimEnd = List.filled(4, null);
+  final List<Duration?> _trimEnd = List.filled(kNumTracks, null);
 
   /// Timers used to stop trimmed playback at the trim end point.
-  final List<Timer?> _trimTimers = List.filled(4, null);
+  final List<Timer?> _trimTimers = List.filled(kNumTracks, null);
 
   /// Per-track display name shown in the UI.
-  final List<String> _trackNames = [
-    kDrumPresets[kDefaultPresetIndices[0]].name,
-    kDrumPresets[kDefaultPresetIndices[1]].name,
-    kDrumPresets[kDefaultPresetIndices[2]].name,
-    kDrumPresets[kDefaultPresetIndices[3]].name,
-  ];
+  final List<String> _trackNames = List.generate(
+    kNumTracks,
+    (i) => kDrumPresets[kDefaultPresetIndices[i]].name,
+  );
 
   /// Per-track mute flag (true = muted, no audio output).
-  final List<bool> _trackMuted = List.filled(4, false);
+  final List<bool> _trackMuted = List.filled(kNumTracks, false);
+
+  /// Per-track in-flight rebuild future. When `_schedulePlayerModeSwitch`
+  /// launches `_rebuildPlayer`, the future is stored here so that `trigger()`
+  /// can await it before using a partially-initialised player.
+  final List<Future<void>?> _pendingRebuild = List.filled(kNumTracks, null);
 
   bool _ready = false;
 
   /// Monotonically increasing counter per track. When a new trigger arrives
   /// while a previous async chain is in flight, the stale chain is abandoned.
-  final List<int> _triggerGen = List.filled(4, 0);
+  final List<int> _triggerGen = List.filled(kNumTracks, 0);
 
   bool get isReady => _ready;
   bool isMuted(int track) => _trackMuted[track];
@@ -156,10 +160,9 @@ class AudioEngine {
   Duration trimStart(int track) => _trimStart[track];
   Duration? trimEnd(int track) => _trimEnd[track];
 
-  /// Playback-position stream for [track]; sourced from the dedicated preview
-  /// player which is the only player that performs seek-based playback.
-  Stream<Duration> positionStream(int track) =>
-      _previewPlayer.onPositionChanged;
+  /// Playback-position stream sourced from the dedicated preview player,
+  /// which is the only player that performs seek-based playback.
+  Stream<Duration> get positionStream => _previewPlayer.onPositionChanged;
 
   bool hasTrim(int track) =>
       _trimStart[track] != Duration.zero || _trimEnd[track] != null;
@@ -176,6 +179,7 @@ class AudioEngine {
   }
 
   Future<void> init() async {
+    if (_ready) return; // Idempotency guard — init() must only run once.
     final tmpDir = await getTemporaryDirectory();
 
     // Synthesise all presets to temp WAV files.
@@ -186,7 +190,8 @@ class AudioEngine {
       _presetPaths.add(path);
     }
 
-    // Two low-latency SoundPool players per track (8 total).
+    // _kSlotsPerTrack (6) low-latency SoundPool players per track
+    // (kNumTracks × _kSlotsPerTrack = 24 total).
     //
     // Ping-pong retrigger: on each trigger the engine uses the NEXT slot and
     // stops only that slot's previous stream (from 2+ triggers ago, amplitude
@@ -202,7 +207,7 @@ class AudioEngine {
     //                          tracks via FocusManager (would cut them off).
     //   • PlayerMode         — lowLatency for sequencer (SoundPool, ~1 ms);
     //                          mediaPlayer for trim/preview (seek support).
-    for (int i = 0; i < 4 * _kSlotsPerTrack; i++) {
+    for (int i = 0; i < kNumTracks * _kSlotsPerTrack; i++) {
       final player = AudioPlayer();
       await player.setPlayerMode(PlayerMode.lowLatency);
       await player.setReleaseMode(ReleaseMode.stop);
@@ -214,7 +219,7 @@ class AudioEngine {
 
     // Pre-load each track's source into SoundPool memory for both slots so
     // the first trigger fires immediately without any load delay.
-    for (int i = 0; i < 4; i++) {
+    for (int i = 0; i < kNumTracks; i++) {
       for (int s = 0; s < _kSlotsPerTrack; s++) {
         await _players[i * _kSlotsPerTrack + s]
             .setSource(DeviceFileSource(samplePath(i)));
@@ -314,9 +319,17 @@ class AudioEngine {
     if (!_ready) return;
     if (_playerModes[track] == mode) return;
     _playerModes[track] = mode;
-    _rebuildPlayer(track, mode).catchError((Object e) {
+    late final Future<void> future;
+    future = _rebuildPlayer(track, mode).catchError((Object e) {
       debugPrint('AudioEngine mode switch error on track $track: $e');
+    }).whenComplete(() {
+      // Clear the pending rebuild only if it is still the same future
+      // (a newer rebuild may have been scheduled in the meantime).
+      if (_pendingRebuild[track] == future) {
+        _pendingRebuild[track] = null;
+      }
     });
+    _pendingRebuild[track] = future;
   }
 
   /// Rebuild the PRIMARY player for [track] in [mode].
@@ -428,7 +441,7 @@ class AudioEngine {
   /// Stop all tracks immediately (e.g. when the sequencer is stopped).
   Future<void> stopAll() async {
     if (!_ready) return;
-    for (int t = 0; t < 4; t++) {
+    for (int t = 0; t < kNumTracks; t++) {
       ++_triggerGen[t];
       _nextSlot[t] = 0;
       _trimTimers[t]?.cancel();
@@ -511,6 +524,15 @@ class AudioEngine {
       } else {
         // MediaPlayer path: required for trimmed playback (seek) or when a
         // clearTrim() mode switch back to lowLatency hasn't completed yet.
+        //
+        // If a rebuild is in-flight (from _schedulePlayerModeSwitch), wait for
+        // it to finish before using the player — otherwise we risk accessing a
+        // partially-initialised AudioPlayer instance.
+        if (_pendingRebuild[track] != null) {
+          await _pendingRebuild[track];
+          if (_triggerGen[track] != gen) return;
+          _pendingRebuild[track] = null;
+        }
         final player = _players[_primary(track)];
         if (trimmed && _playerModes[track] != PlayerMode.mediaPlayer) {
           await _rebuildPlayer(track, PlayerMode.mediaPlayer);

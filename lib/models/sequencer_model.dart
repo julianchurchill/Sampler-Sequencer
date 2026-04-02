@@ -288,7 +288,7 @@ class SequencerModel extends ChangeNotifier {
   Future<void> previewTrim(int track, Duration start, Duration? end) =>
       _audio.previewTrim(track, start, end);
   Future<void> stopTrack(int track) => _audio.stopTrack(track);
-  Stream<Duration> positionStream(int track) => _audio.positionStream(track);
+  Stream<Duration> get positionStream => _audio.positionStream;
 
   void clearAllSteps() {
     for (final row in _steps) {
@@ -312,11 +312,8 @@ class SequencerModel extends ChangeNotifier {
   Future<void> _play() async {
     try {
       if (!_audio.isReady) {
-        // Fallback in case init() hasn't completed yet.
-        _isLoading = true;
-        notifyListeners();
-        await _audio.init();
-        _isLoading = false;
+        debugPrint('SequencerModel._play(): audio engine not ready, aborting playback');
+        return;
       }
       _isPlaying = true;
       _currentStep = 0;
