@@ -1,4 +1,8 @@
+import 'dart:typed_data';
+
 import 'package:flutter/material.dart';
+
+import 'audio/dsp_utils.dart';
 
 const int kNumTracks = 4;
 const int kNumSteps = 16;
@@ -38,3 +42,30 @@ const Color kStepCurrentInactive = Color(0xFF3D3D3D);
 const Color kTextDim = Color(0xFF888888);
 
 const double kDefaultStepVelocity = 1.0;
+
+// ---------------------------------------------------------------------------
+// Preset catalogue
+// ---------------------------------------------------------------------------
+
+typedef SampleGenerator = Float64List Function(int sr);
+
+class DrumPreset {
+  const DrumPreset(this.name, this.generator);
+  final String name;
+  final SampleGenerator generator;
+}
+
+final List<DrumPreset> kDrumPresets = [
+  DrumPreset('Kick 808',  generateKick808),
+  DrumPreset('Kick Hard', generateKickHard),
+  DrumPreset('Snare',     generateSnare),
+  DrumPreset('Rim Shot',  generateRimShot),
+  DrumPreset('HH Closed', generateHiHatClosed),
+  DrumPreset('HH Open',   generateHiHatOpen),
+  DrumPreset('Clap',      generateClap),
+  DrumPreset('Tom',       generateTom),
+  DrumPreset('Cowbell',   generateCowbell),
+];
+
+/// Default preset index assigned to each track (0=Kick808, 2=Snare, 4=HH Closed, 5=HH Open).
+const List<int> kDefaultPresetIndices = [0, 2, 4, 5];
