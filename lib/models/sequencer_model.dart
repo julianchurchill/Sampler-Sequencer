@@ -167,6 +167,8 @@ class SequencerModel extends ChangeNotifier {
         prefs.setString('$_kPrefsStepVelocity$t',
             _stepVelocity[t].map((v) => v.toStringAsFixed(3)).join(','));
       }
+    }).catchError((Object e) {
+      debugPrint('SequencerModel._save failed: $e');
     });
   }
 

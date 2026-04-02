@@ -376,4 +376,25 @@ void main() {
       model.removeListener(listener);
     });
   });
+
+  // -------------------------------------------------------------------------
+  group('_save error handling', () {
+    test('does not throw an unhandled error when persistence fails', () async {
+      // Make customPath throw to simulate a persistence failure inside the
+      // fire-and-forget _save() callback.  Without a catchError handler this
+      // would surface as an unhandled Future rejection and fail the test.
+      when(() => audio.customPath(any()))
+          .thenThrow(StateError('simulated persistence failure'));
+
+      // setBpm triggers _save() internally.
+      model.setBpm(100);
+
+      // Flush microtasks so the fire-and-forget Future completes within the
+      // test zone (which catches unhandled async errors).
+      await Future<void>.delayed(Duration.zero);
+
+      expect(model.bpm, 100,
+          reason: '_save() failure should not prevent the BPM from being set');
+    });
+  });
 }
