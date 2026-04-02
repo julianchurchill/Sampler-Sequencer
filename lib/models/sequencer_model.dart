@@ -141,6 +141,8 @@ class SequencerModel extends ChangeNotifier {
         final end = _audio.trimEnd(t);
         prefs.setInt('$_kPrefsTrackTrimEnd$t', end != null ? end.inMilliseconds : -1);
       }
+    }).catchError((Object e) {
+      debugPrint('SequencerModel _save error: $e');
     });
   }
 
