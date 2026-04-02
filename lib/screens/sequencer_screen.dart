@@ -1,3 +1,4 @@
+import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
 import 'package:package_info_plus/package_info_plus.dart';
 import 'package:provider/provider.dart';
@@ -25,6 +26,7 @@ class SequencerScreen extends StatefulWidget {
 
 class _SequencerScreenState extends State<SequencerScreen> {
   PackageInfo? _packageInfo;
+  SequencerModel? _model;
 
   @override
   void initState() {
@@ -32,6 +34,59 @@ class _SequencerScreenState extends State<SequencerScreen> {
     PackageInfo.fromPlatform().then((info) {
       if (mounted) setState(() => _packageInfo = info);
     });
+  }
+
+  @override
+  void didChangeDependencies() {
+    super.didChangeDependencies();
+    final newModel = context.read<SequencerModel>();
+    if (_model != newModel) {
+      _model?.removeListener(_onModelChanged);
+      _model = newModel;
+      _model!.addListener(_onModelChanged);
+    }
+  }
+
+  void _onModelChanged() {
+    if (!kDebugMode) return;
+    final err = _model?.saveError;
+    if (err == null) return;
+    _model!.clearSaveError();
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      if (!mounted) return;
+      showDialog<void>(
+        context: context,
+        builder: (ctx) => AlertDialog(
+          backgroundColor: kPanelColor,
+          shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
+          title: const Text(
+            'SAVE ERROR',
+            style: TextStyle(
+              fontSize: 13,
+              fontWeight: FontWeight.w600,
+              letterSpacing: 1.5,
+              color: Colors.red,
+            ),
+          ),
+          content: Text(
+            '$err',
+            style: const TextStyle(fontSize: 12, color: kTextBright),
+          ),
+          actions: [
+            TextButton(
+              onPressed: () => Navigator.of(ctx).pop(),
+              child: const Text('OK', style: TextStyle(color: kAccentColor)),
+            ),
+          ],
+        ),
+      );
+    });
+  }
+
+  @override
+  void dispose() {
+    _model?.removeListener(_onModelChanged);
+    super.dispose();
   }
 
   void _showVersionInfo(BuildContext context) {
