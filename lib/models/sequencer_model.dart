@@ -102,11 +102,11 @@ class SequencerModel extends ChangeNotifier {
       final customPath = prefs.getString('$_kPrefsTrackCustomPath$t');
       if (customPath != null) {
         final customName = prefs.getString('$_kPrefsTrackCustomName$t') ?? customPath.split('/').last;
-        _audio.setCustomPathWithName(t, customPath, customName);
+        await _audio.setCustomPathWithName(t, customPath, customName);
       } else {
         final presetIdx = prefs.getInt('$_kPrefsTrackPreset$t');
         if (presetIdx != null && presetIdx >= 0 && presetIdx < kDrumPresets.length) {
-          _audio.setPreset(t, presetIdx);
+          await _audio.setPreset(t, presetIdx);
         }
       }
       final vol = prefs.getDouble('$_kPrefsTrackVolume$t');

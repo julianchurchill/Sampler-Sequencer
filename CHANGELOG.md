@@ -12,6 +12,18 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   SoundPool streams summing to ~1.19× peak amplitude in the PCM mixer (hard
   clipping). Reduced Kick 808 amplitude from 0.9 to 0.72; two adjacent hits
   now sum to ≤ 0.95 at 120 BPM.
+- Fixed silent kick drops (~3/16 heard) caused by two compounding bugs:
+  1. `_scheduleSourceReload` queued unawaited `setSource()` calls in each
+     player's command queue; `trigger()`'s `stop()` was serialised behind them
+     and did not execute until the reload finished. By then the next step had
+     incremented `_triggerGen`, and the generation check dropped the kick.
+  2. The generation check between `stop()` and `play()` in the untrimmed
+     ping-pong fast path is incorrect: every trigger uses a *different* slot,
+     so there is no resource conflict to guard against.
+  Fix: `setPreset` / `setCustomPath` / `setCustomPathWithName` / `clearCustomPath`
+  now return `Future<void>` that resolves when all SoundPool slots have loaded.
+  `SequencerModel.init()` awaits them so sources are fully loaded before the
+  user can hit play. The generation check is removed from the fast path.
 
 ## [2.2.3] - 2026-04-01
 

@@ -237,48 +237,61 @@ class AudioEngine {
   // ---------------------------------------------------------------------------
 
   /// Switch a track to a built-in preset.
-  void setPreset(int track, int presetIndex) {
+  ///
+  /// Returns a [Future] that completes once every sequencer player slot for
+  /// [track] has finished loading the new source into SoundPool memory.
+  /// Callers that do not need to wait (e.g. UI event handlers) may discard the
+  /// Future; [SequencerModel.init] awaits it so playback is never attempted
+  /// before the sources are ready.
+  Future<void> setPreset(int track, int presetIndex) {
     _trackCustomPath[track] = null;
     _trackPresetIndex[track] = presetIndex;
     _trackNames[track] = kDrumPresets[presetIndex].name;
-    _scheduleSourceReload(track);
+    return _reloadSourceForTrack(track);
   }
 
   /// Override a track with a user-picked file (name derived from filename).
-  void setCustomPath(int track, String path) {
+  /// See [setPreset] for Future semantics.
+  Future<void> setCustomPath(int track, String path) {
     _trackCustomPath[track] = path;
     final filename = path.split('/').last;
     _trackNames[track] = filename.contains('.')
         ? filename.substring(0, filename.lastIndexOf('.'))
         : filename;
-    _scheduleSourceReload(track);
+    return _reloadSourceForTrack(track);
   }
 
   /// Override a track with a known path and explicit display [name].
-  void setCustomPathWithName(int track, String path, String name) {
+  /// See [setPreset] for Future semantics.
+  Future<void> setCustomPathWithName(int track, String path, String name) {
     _trackCustomPath[track] = path;
     _trackNames[track] = name;
-    _scheduleSourceReload(track);
+    return _reloadSourceForTrack(track);
   }
 
   /// Clear custom file override; track reverts to its current preset.
-  void clearCustomPath(int track) {
+  /// See [setPreset] for Future semantics.
+  Future<void> clearCustomPath(int track) {
     _trackCustomPath[track] = null;
     _trackNames[track] = kDrumPresets[_trackPresetIndex[track]].name;
-    _scheduleSourceReload(track);
+    return _reloadSourceForTrack(track);
   }
 
-  /// Fire-and-forget reload of all sequencer players for [track].
-  /// Called after any path or preset change.
-  void _scheduleSourceReload(int track) {
-    if (!_ready) return;
-    for (int s = 0; s < _kSlotsPerTrack; s++) {
-      _players[track * _kSlotsPerTrack + s]
-          .setSource(DeviceFileSource(samplePath(track)))
-          .catchError((Object e) {
-        debugPrint('AudioEngine source reload error on track $track slot $s: $e');
-      });
-    }
+  /// Reload all sequencer player slots for [track] with the current
+  /// [samplePath]. Returns a Future that completes when all slots have
+  /// finished loading so that [trigger] never calls soundPool.play() on a
+  /// sound that is still being loaded (which returns stream-id 0 and is
+  /// silently dropped by SoundPool).
+  Future<void> _reloadSourceForTrack(int track) {
+    if (!_ready) return Future.value();
+    return Future.wait([
+      for (int s = 0; s < _kSlotsPerTrack; s++)
+        _players[track * _kSlotsPerTrack + s]
+            .setSource(DeviceFileSource(samplePath(track)))
+            .catchError((Object e) {
+          debugPrint('AudioEngine source reload error on track $track slot $s: $e');
+        }),
+    ]);
   }
 
   // ---------------------------------------------------------------------------
@@ -497,8 +510,13 @@ class AudioEngine {
         // play(source) calls setSource() first, which re-establishes `prepared`
         // via the urlToPlayers cache before calling resume() — this is the only
         // reliable way to restart a stopped SoundPool player.
+        //
+        // No generation check between stop() and play() here: each trigger
+        // uses a DIFFERENT ping-pong slot, so concurrent triggers never share
+        // a player and there is no resource conflict to guard against. A check
+        // here would silently drop kicks whenever stop() is briefly delayed
+        // (e.g. behind an in-flight setSource() from a preset change).
         await player.stop();
-        if (_triggerGen[track] != gen) return;
         await player.play(DeviceFileSource(path), volume: effectiveVolume);
       } else {
         // MediaPlayer path: required for trimmed playback (seek) or when a
