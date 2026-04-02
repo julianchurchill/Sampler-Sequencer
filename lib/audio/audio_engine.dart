@@ -72,6 +72,11 @@ const int _kSampleRate = 44100;
 const int _kSlotsPerTrack = 6;
 
 class AudioEngine {
+  /// Public alias for the number of SoundPool player slots per track.
+  /// Exposed so that tests can create the right number of fake players via
+  /// [initForTest] without depending on the private constant.
+  static const int slotsPerTrack = _kSlotsPerTrack;
+
   /// Sequencer players — [_kSlotsPerTrack] per track.
   ///
   /// Player for track T, slot S lives at index T * _kSlotsPerTrack + S.
@@ -173,6 +178,33 @@ class AudioEngine {
     for (int s = 0; s < _kSlotsPerTrack; s++) {
       await _players[track * _kSlotsPerTrack + s].setVolume(_trackVolume[track]);
     }
+  }
+
+  /// Test-only initialiser — bypasses file I/O and platform channels.
+  ///
+  /// Injects pre-built [players] (must have exactly
+  /// `4 × [slotsPerTrack]` entries, track T owning slots
+  /// `[T*slotsPerTrack .. T*slotsPerTrack + slotsPerTrack - 1]`) and a
+  /// [previewPlayer], then marks the engine ready. Optionally accepts
+  /// [presetPaths]; if omitted, placeholder paths are used — sufficient for
+  /// tests that mock [AudioPlayer] and never touch the file system.
+  @visibleForTesting
+  void initForTest({
+    required List<AudioPlayer> players,
+    required AudioPlayer previewPlayer,
+    List<String>? presetPaths,
+  }) {
+    assert(
+      players.length == 4 * _kSlotsPerTrack,
+      'initForTest expects ${4 * _kSlotsPerTrack} players '
+      '(4 tracks × $_kSlotsPerTrack slots), got ${players.length}',
+    );
+    _players.addAll(players);
+    _previewPlayer = previewPlayer;
+    final paths = presetPaths ??
+        [for (int i = 0; i < kDrumPresets.length; i++) '/fake/preset_$i.wav'];
+    _presetPaths.addAll(paths);
+    _ready = true;
   }
 
   Future<void> init() async {

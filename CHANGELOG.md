@@ -5,6 +5,20 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [2.3.1] - 2026-04-02
+
+### Changed
+- `AudioEngine.slotsPerTrack` exposed as a public constant (was `_kSlotsPerTrack`).
+- `AudioEngine.initForTest()` added (`@visibleForTesting`) so the trigger path
+  can be exercised with mock players without platform channels or file I/O.
+
+### Tests
+- `test/audio_engine_trigger_test.dart` — four tests covering the trigger fast path:
+  1. 16 consecutive trigger() calls each fire play() (regression guard for the 3/16 kicks bug)
+  2. Ping-pong: each slot is stopped+played exactly once across slotsPerTrack triggers
+  3. Muted track fires no play() calls
+  4. Velocity is multiplied by track volume and passed to play()
+
 ## [2.3.0] - 2026-04-02
 
 ### Added
