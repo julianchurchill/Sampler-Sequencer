@@ -175,22 +175,45 @@ void main() {
       }
     });
 
-    test('two simultaneous Kick808 streams at adjacent 120-BPM steps do not clip', () {
-      // At 120 BPM each step is 125 ms. Two Kick808 hits on adjacent steps
-      // produce overlapping streams in the SoundPool mixer. If their combined
-      // amplitude exceeds 1.0 at any point the mixer hard-clips, producing an
-      // audible crack on the 2nd hit. This test verifies the sum stays ≤ 1.0.
+    test('sixteen Kick808 streams at 120-BPM 16th-note steps do not clip', () {
+      // Sixteen Kick808 hits on consecutive 16th-note steps (125 ms apart at
+      // 120 BPM) produce up to 4 simultaneous streams in the SoundPool mixer
+      // (the kick is 500 ms long). If their combined amplitude ever exceeds 1.0
+      // the mixer hard-clips, producing an audible crack. This is the full
+      // worst-case bar of kicks — a stronger version of the 2-stream check.
+      //
+      // The amplitude 0.9 → 0.72 reduction was introduced to fix this. If the
+      // amplitude is ever raised again, this test will catch the regression.
       final buf = generateKick808(_kSampleRate);
-      const offsetSamples = _kSampleRate * 125 ~/ 1000; // 120 BPM = 125 ms/step
-      for (int i = 0; i < buf.length; i++) {
-        final s1 = buf[i];
-        final s2 = i >= offsetSamples ? buf[i - offsetSamples] : 0.0;
-        final combined = (s1 + s2).abs();
-        expect(combined, lessThanOrEqualTo(1.0),
-            reason: 'generateKick808: two streams offset by 125 ms clip at sample $i '
-                '(s1=$s1, s2=$s2, sum=${s1 + s2}). Hard PCM clipping in the SoundPool '
-                'mixer causes an audible click on the 2nd adjacent kick hit.');
+      const stepSamples = _kSampleRate * 125 ~/ 1000; // 120 BPM = 125 ms/step
+      const steps = 16;
+      // Scan the full window including the tail of the 16th kick.
+      final totalSamples = buf.length + (steps - 1) * stepSamples;
+      for (int i = 0; i < totalSamples; i++) {
+        double combined = 0.0;
+        for (int step = 0; step < steps; step++) {
+          final bufIdx = i - step * stepSamples;
+          if (bufIdx >= 0 && bufIdx < buf.length) {
+            combined += buf[bufIdx];
+          }
+        }
+        expect(combined.abs(), lessThanOrEqualTo(1.0),
+            reason: 'generateKick808: 16-step mix clips at sample $i '
+                '(combined=$combined). Hard PCM clipping in the SoundPool mixer '
+                'causes an audible click. Do not raise the Kick808 amplitude '
+                'above 0.72 without verifying this test still passes.');
       }
+    });
+
+    test('generateKick808 peak amplitude is above the audibility threshold', () {
+      // Guards against the amplitude being reduced so far that the kick becomes
+      // inaudible. Anything below ~0.3 would be lost in a mix.
+      final buf = generateKick808(_kSampleRate);
+      final peak = buf.map((s) => s.abs()).reduce((a, b) => a > b ? a : b);
+      expect(peak, greaterThan(0.3),
+          reason: 'generateKick808 peak amplitude $peak is below 0.3 — the kick '
+              'would be inaudible in a mix. Do not reduce the amplitude multiplier '
+              'below ~0.72.');
     });
   });
 }
