@@ -174,5 +174,23 @@ void main() {
             reason: 'generateSnare: sample[$i] = ${buf[i]} is outside [-1.0, 1.0] — would clip when converting to 16-bit PCM');
       }
     });
+
+    test('two simultaneous Kick808 streams at adjacent 120-BPM steps do not clip', () {
+      // At 120 BPM each step is 125 ms. Two Kick808 hits on adjacent steps
+      // produce overlapping streams in the SoundPool mixer. If their combined
+      // amplitude exceeds 1.0 at any point the mixer hard-clips, producing an
+      // audible crack on the 2nd hit. This test verifies the sum stays ≤ 1.0.
+      final buf = generateKick808(_kSampleRate);
+      const offsetSamples = _kSampleRate * 125 ~/ 1000; // 120 BPM = 125 ms/step
+      for (int i = 0; i < buf.length; i++) {
+        final s1 = buf[i];
+        final s2 = i >= offsetSamples ? buf[i - offsetSamples] : 0.0;
+        final combined = (s1 + s2).abs();
+        expect(combined, lessThanOrEqualTo(1.0),
+            reason: 'generateKick808: two streams offset by 125 ms clip at sample $i '
+                '(s1=$s1, s2=$s2, sum=${s1 + s2}). Hard PCM clipping in the SoundPool '
+                'mixer causes an audible click on the 2nd adjacent kick hit.');
+      }
+    });
   });
 }

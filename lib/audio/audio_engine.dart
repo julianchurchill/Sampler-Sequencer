@@ -139,6 +139,12 @@ class AudioEngine {
   /// while a previous async chain is in flight, the stale chain is abandoned.
   final List<int> _triggerGen = List.filled(4, 0);
 
+  /// Per-track in-flight source-reload Future.
+  /// Non-null while [_scheduleSourceReload] is running for that track.
+  /// [trigger] awaits this to prevent soundPool.play(0,…) silent failures
+  /// during async SoundPool loads triggered by preset changes.
+  final List<Future<void>?> _pendingSourceReload = List.filled(4, null);
+
   bool get isReady => _ready;
   bool isMuted(int track) => _trackMuted[track];
   void setMuted(int track, bool muted) => _trackMuted[track] = muted;
@@ -269,16 +275,26 @@ class AudioEngine {
   }
 
   /// Reload the source for [track]'s sequencer players (all slots).
-  /// Fire-and-forget; called after any path change.
+  /// Reload the source for [track]'s sequencer players (all slots).
+  /// Stores the resulting Future in [_pendingSourceReload] so that [trigger]
+  /// can await it before firing, preventing soundPool.play(0,…) silent failures
+  /// when a trigger arrives during an async SoundPool load after a preset change.
   void _scheduleSourceReload(int track) {
     if (!_ready) return;
-    for (int s = 0; s < _kSlotsPerTrack; s++) {
-      _players[track * _kSlotsPerTrack + s]
-          .setSource(DeviceFileSource(samplePath(track)))
-          .catchError((Object e) {
-        debugPrint('AudioEngine source reload error on track $track slot $s: $e');
-      });
-    }
+    _pendingSourceReload[track] = () async {
+      try {
+        await Future.wait([
+          for (int s = 0; s < _kSlotsPerTrack; s++)
+            _players[track * _kSlotsPerTrack + s]
+                .setSource(DeviceFileSource(samplePath(track)))
+                .catchError((Object e) {
+              debugPrint('AudioEngine source reload error on track $track slot $s: $e');
+            }),
+        ]);
+      } finally {
+        _pendingSourceReload[track] = null;
+      }
+    }();
   }
 
   // ---------------------------------------------------------------------------
@@ -471,6 +487,14 @@ class AudioEngine {
     final effectiveVolume =
         (_trackVolume[track] * velocity.clamp(0.0, 1.0)).clamp(0.0, 1.0);
     try {
+      // Await any in-flight source reload; prevents soundPool.play(0,…) silent
+      // failure during async SoundPool load after a preset change.
+      final pending = _pendingSourceReload[track];
+      if (pending != null) {
+        await pending;
+        if (_triggerGen[track] != gen) return;
+      }
+
       final start = _trimStart[track];
       final end = _trimEnd[track];
       final trimmed = start != Duration.zero || end != null;
