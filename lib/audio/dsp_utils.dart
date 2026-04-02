@@ -88,7 +88,7 @@ Float64List generateKick808(int sr) {
     final frac = (i < sweepSamples) ? i / sweepSamples : 1.0;
     final freq = f0 + (f1 - f0) * frac;
     phase += 2 * math.pi * freq / sr;
-    buf[i] = math.sin(phase) * dspEnv(i, n, 4.0) * 0.9;
+    buf[i] = math.sin(phase) * dspEnv(i, n, 4.0) * 0.72;
   }
   return buf;
 }
