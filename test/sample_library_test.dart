@@ -150,4 +150,116 @@ void main() {
           reason: 'Only valid map entries should be loaded');
     });
   });
+
+  group('SampleLibrary.addRecording()', () {
+    test('copies the file and adds an entry to the samples list', () async {
+      // Initialise an empty library
+      indexFile.writeAsStringSync(jsonEncode([]));
+      final lib = SampleLibrary(libraryDir: libraryDir);
+      await lib.init();
+
+      // Create a "recorded" file outside the library directory
+      final tempRecording = File('${tmpDir.path}/recording.m4a');
+      tempRecording.writeAsBytesSync([0xDE, 0xAD, 0xBE, 0xEF]);
+
+      await lib.addRecording(tempRecording.path, 'My Recording');
+
+      expect(lib.samples.length, 1,
+          reason: 'addRecording should add exactly one entry to the samples list');
+      expect(lib.samples[0].name, 'My Recording',
+          reason: 'The added entry should use the display name passed to addRecording');
+      // The file should have been copied into the library directory
+      expect(File(lib.samples[0].path).existsSync(), true,
+          reason: 'addRecording should copy the file to the library directory');
+      expect(lib.samples[0].path.startsWith(libraryDir.path), true,
+          reason: 'The copied file path should be inside the library directory');
+      // The original file should still exist (copy, not move)
+      expect(tempRecording.existsSync(), true,
+          reason: 'addRecording should copy, not move — the original file should still exist');
+    });
+  });
+
+  group('SampleLibrary.rename()', () {
+    test('updates the display name but not the file on disk', () async {
+      final samplePath = createSampleFile('kick.wav');
+      indexFile.writeAsStringSync(jsonEncode([
+        {'path': samplePath, 'name': 'Kick Drum'},
+      ]));
+
+      final lib = SampleLibrary(libraryDir: libraryDir);
+      await lib.init();
+
+      final entry = lib.samples[0];
+      final originalPath = entry.path;
+
+      await lib.rename(entry, 'Bass Drum');
+
+      expect(lib.samples[0].name, 'Bass Drum',
+          reason: 'rename should update the display name in the samples list');
+      expect(lib.samples[0].path, originalPath,
+          reason: 'rename should not change the file path on disk');
+      expect(File(originalPath).existsSync(), true,
+          reason: 'The original file should still exist at its original path after rename');
+    });
+  });
+
+  group('SampleLibrary.delete()', () {
+    test('removes the file and the entry', () async {
+      final samplePath = createSampleFile('kick.wav');
+      indexFile.writeAsStringSync(jsonEncode([
+        {'path': samplePath, 'name': 'Kick Drum'},
+      ]));
+
+      final lib = SampleLibrary(libraryDir: libraryDir);
+      await lib.init();
+
+      expect(lib.samples.length, 1,
+          reason: 'Precondition: library should start with one entry');
+
+      final entry = lib.samples[0];
+      await lib.delete(entry);
+
+      expect(lib.samples.isEmpty, true,
+          reason: 'delete should remove the entry from the samples list');
+      expect(File(samplePath).existsSync(), false,
+          reason: 'delete should remove the actual file from disk');
+    });
+  });
+
+  group('SampleLibrary._persistIndex() via _saveIndex()', () {
+    test('writes valid JSON that can be re-loaded', () async {
+      // Start with an empty library, add entries, then verify persisted JSON
+      indexFile.writeAsStringSync(jsonEncode([]));
+      final lib = SampleLibrary(libraryDir: libraryDir);
+      await lib.init();
+
+      // Create a temp file and add it as a recording
+      final tempRecording = File('${tmpDir.path}/voice.m4a');
+      tempRecording.writeAsBytesSync([0x01, 0x02, 0x03]);
+
+      await lib.addRecording(tempRecording.path, 'Voice Sample');
+
+      // Read the persisted index.json directly and verify it is valid JSON
+      final rawJson = indexFile.readAsStringSync();
+      final decoded = jsonDecode(rawJson);
+      expect(decoded, isA<List>(),
+          reason: 'Persisted index.json should be a JSON list');
+      expect((decoded as List).length, 1,
+          reason: 'Persisted index should contain exactly one entry after one addRecording');
+
+      final entry = decoded[0] as Map<String, dynamic>;
+      expect(entry['name'], 'Voice Sample',
+          reason: 'Persisted entry name should match the display name passed to addRecording');
+      expect(entry['path'], isA<String>(),
+          reason: 'Persisted entry path should be a String');
+
+      // Verify that a fresh SampleLibrary can re-load the index
+      final lib2 = SampleLibrary(libraryDir: libraryDir);
+      await lib2.init();
+      expect(lib2.samples.length, 1,
+          reason: 'A fresh SampleLibrary should reload the persisted index and get one entry');
+      expect(lib2.samples[0].name, 'Voice Sample',
+          reason: 'The reloaded entry name should match what was persisted');
+    });
+  });
 }

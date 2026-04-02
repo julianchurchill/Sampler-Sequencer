@@ -200,6 +200,118 @@ void main() {
       expect(result, isNull,
           reason: 'readWav should return null for a file path that does not exist');
     });
+
+    test('readWav rejects bytes shorter than 44 (minimum WAV header)', () async {
+      final tempDir = Directory.systemTemp.createTempSync('wav_test_');
+      final tempFile = File('${tempDir.path}/short.wav');
+      try {
+        // Write 43 bytes — one less than the minimum WAV header
+        await tempFile.writeAsBytes(List<int>.filled(43, 0));
+        final result = await readWav(tempFile.path);
+        expect(result, isNull,
+            reason: 'readWav should return null for data shorter than 44 bytes (minimum WAV header size)');
+      } finally {
+        tempDir.deleteSync(recursive: true);
+      }
+    });
+
+    test('readWav rejects non-RIFF header', () async {
+      final tempDir = Directory.systemTemp.createTempSync('wav_test_');
+      final tempFile = File('${tempDir.path}/bad_riff.wav');
+      try {
+        // 44 bytes with wrong magic — "XXXX" instead of "RIFF"
+        final bytes = Uint8List(44);
+        bytes[0] = 0x58; // X
+        bytes[1] = 0x58; // X
+        bytes[2] = 0x58; // X
+        bytes[3] = 0x58; // X
+        await tempFile.writeAsBytes(bytes);
+        final result = await readWav(tempFile.path);
+        expect(result, isNull,
+            reason: 'readWav should return null when bytes 0-3 are not "RIFF"');
+      } finally {
+        tempDir.deleteSync(recursive: true);
+      }
+    });
+
+    test('readWav rejects non-WAVE format marker', () async {
+      final tempDir = Directory.systemTemp.createTempSync('wav_test_');
+      final tempFile = File('${tempDir.path}/bad_wave.wav');
+      try {
+        // 44 bytes with correct RIFF but wrong format marker — "XXXX" instead of "WAVE"
+        final bytes = Uint8List(44);
+        // RIFF header
+        bytes[0] = 0x52; // R
+        bytes[1] = 0x49; // I
+        bytes[2] = 0x46; // F
+        bytes[3] = 0x46; // F
+        // Wrong format marker at offset 8
+        bytes[8] = 0x58; // X
+        bytes[9] = 0x58; // X
+        bytes[10] = 0x58; // X
+        bytes[11] = 0x58; // X
+        await tempFile.writeAsBytes(bytes);
+        final result = await readWav(tempFile.path);
+        expect(result, isNull,
+            reason: 'readWav should return null when bytes 8-11 are not "WAVE"');
+      } finally {
+        tempDir.deleteSync(recursive: true);
+      }
+    });
+  });
+
+  // -------------------------------------------------------------------------
+  group('peak normalization', () {
+    test('when mix values exceed 1.0, output is clamped to 32767', () async {
+      // Create a mix buffer where values exceed 1.0 (e.g., from summing
+      // multiple tracks). The exporter must scale them so the final PCM
+      // output stays within [-32768, 32767].
+      const numFrames = 512;
+      const numChannels = 1;
+      final buf = Float64List(numFrames * numChannels);
+      // Fill with values that exceed 1.0 — simulates overlapping loud tracks
+      for (int i = 0; i < buf.length; i++) {
+        buf[i] = 2.5; // well above 1.0
+      }
+
+      // Compute scale the same way the exporter does
+      double peak = 0;
+      for (final v in buf) {
+        if (v.abs() > peak) peak = v.abs();
+      }
+      final scale = peak > 1.0 ? 1.0 / peak : 1.0;
+
+      final tempDir = Directory.systemTemp.createTempSync('wav_norm_test_');
+      final outputPath = '${tempDir.path}/normalized.wav';
+      try {
+        await writeWavChunked(
+          outputPath: outputPath,
+          mixBuffer: buf,
+          scale: scale,
+          sampleRate: 44100,
+          numChannels: numChannels,
+        );
+
+        final wavData = await readWav(outputPath);
+        expect(wavData, isNotNull,
+            reason: 'writeWavChunked output should be parseable by readWav');
+        for (int i = 0; i < wavData!.samples.length; i++) {
+          expect(wavData.samples[i], lessThanOrEqualTo(32767),
+              reason: 'normalized sample[$i] = ${wavData.samples[i]} should not exceed 32767');
+          expect(wavData.samples[i], greaterThanOrEqualTo(-32768),
+              reason: 'normalized sample[$i] = ${wavData.samples[i]} should not be below -32768');
+        }
+        // Additionally verify the peak is close to 32767 (full-scale after normalization)
+        int maxSample = 0;
+        for (final s in wavData.samples) {
+          if (s.abs() > maxSample) maxSample = s.abs();
+        }
+        expect(maxSample, closeTo(32767, 1),
+            reason: 'peak-normalized output should reach near full-scale (32767); got $maxSample');
+      } finally {
+        tempDir.deleteSync(recursive: true);
+      }
+    });
   });
 
   // -------------------------------------------------------------------------
