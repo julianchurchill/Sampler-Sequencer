@@ -73,6 +73,11 @@ class AudioEngine {
   int _previewGen = 0;
   Timer? _previewTimer;
 
+  /// Whether the preview player is currently playing a trim preview.
+  /// Used to guard [getTrackDuration] against clobbering the preview player's
+  /// source mid-playback.
+  bool _previewPlaying = false;
+
   /// One cached WAV path per preset, indexed by kDrumPresets index.
   final List<String> _presetPaths = [];
 
@@ -343,6 +348,8 @@ class AudioEngine {
   /// or null if it cannot be determined.
   Future<Duration?> getTrackDuration(int track) async {
     if (!_ready) return null;
+    // Don't clobber the preview player's source if a trim preview is playing.
+    if (_previewPlaying) return null;
     final path = samplePath(track);
     try {
       await _previewPlayer.setSource(DeviceFileSource(path));
@@ -381,11 +388,13 @@ class AudioEngine {
       if (_previewGen != gen) return;
       await _previewPlayer.resume();
       if (_previewGen != gen) return;
+      _previewPlaying = true;
       if (end != null) {
         final playDuration = end - start;
         if (playDuration > Duration.zero) {
           _previewTimer = Timer(playDuration, () {
             if (_previewGen == gen) {
+              _previewPlaying = false;
               _previewPlayer.stop();
             }
           });
@@ -406,6 +415,7 @@ class AudioEngine {
     ++_previewGen;
     _previewTimer?.cancel();
     _previewTimer = null;
+    _previewPlaying = false;
     try {
       final stops = <Future<void>>[
         for (int s = 0; s < _kSlotsPerTrack; s++)
@@ -434,6 +444,7 @@ class AudioEngine {
     ++_previewGen;
     _previewTimer?.cancel();
     _previewTimer = null;
+    _previewPlaying = false;
     await Future.wait([
       for (int i = 0; i < _players.length; i++)
         _players[i].stop().catchError((e) {
