@@ -32,8 +32,8 @@ void main() {
     when(() => audio.trimStart(any())).thenReturn(Duration.zero);
     when(() => audio.trimEnd(any())).thenReturn(null);
     when(() => audio.setMuted(any(), any())).thenReturn(null);
-    when(() => audio.setPreset(any(), any())).thenReturn(null);
-    when(() => audio.clearCustomPath(any())).thenReturn(null);
+    when(() => audio.setPreset(any(), any())).thenAnswer((_) async {});
+    when(() => audio.clearCustomPath(any()))..thenAnswer((_) async {});
     when(() => audio.setTrim(any(), any(), any())).thenReturn(null);
     when(() => audio.clearTrim(any())).thenReturn(null);
     when(() => audio.setTrackVolume(any(), any()))
