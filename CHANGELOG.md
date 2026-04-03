@@ -5,6 +5,58 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [2.3.1] - 2026-04-02
+
+### Changed
+- `AudioEngine.slotsPerTrack` exposed as a public constant (was `_kSlotsPerTrack`).
+- `AudioEngine.initForTest()` added (`@visibleForTesting`) so the trigger path
+  can be exercised with mock players without platform channels or file I/O.
+
+### Tests
+- `test/audio_engine_trigger_test.dart` — four tests covering the trigger fast path:
+  1. 16 consecutive trigger() calls each fire play() (regression guard for the 3/16 kicks bug)
+  2. Ping-pong: each slot is stopped+played exactly once across slotsPerTrack triggers
+  3. Muted track fires no play() calls
+  4. Velocity is multiplied by track volume and passed to play()
+
+## [2.3.0] - 2026-04-02
+
+### Added
+- Version info overlay: tapping the ⓘ button in the app bar shows a dialog
+  with the app version, build number, and build timestamp. The timestamp is
+  injected at CI build time via `--dart-define=BUILD_TIMESTAMP=...` and falls
+  back to "dev" for local debug builds.
+
+## [2.2.4] - 2026-04-02
+
+### Fixed
+- Eliminated click on the 2nd adjacent Kick 808 hit caused by two overlapping
+  SoundPool streams summing to ~1.19× peak amplitude in the PCM mixer (hard
+  clipping). Reduced Kick 808 amplitude from 0.9 to 0.72; two adjacent hits
+  now sum to ≤ 0.95 at 120 BPM.
+- Fixed silent kick drops (~3/16 heard) caused by two compounding bugs:
+  1. `_scheduleSourceReload` queued unawaited `setSource()` calls in each
+     player's command queue; `trigger()`'s `stop()` was serialised behind them
+     and did not execute until the reload finished. By then the next step had
+     incremented `_triggerGen`, and the generation check dropped the kick.
+  2. The generation check between `stop()` and `play()` in the untrimmed
+     ping-pong fast path is incorrect: every trigger uses a *different* slot,
+     so there is no resource conflict to guard against.
+  Fix: `setPreset` / `setCustomPath` / `setCustomPathWithName` / `clearCustomPath`
+  now return `Future<void>` that resolves when all SoundPool slots have loaded.
+  `SequencerModel.init()` awaits them so sources are fully loaded before the
+  user can hit play. The generation check is removed from the fast path.
+
+## [2.2.3] - 2026-04-01
+
+### Fixed
+- Fixed retrigger click regression introduced in 2.2.2: replacing `play(source)`
+  with `setVolume()` + `resume()` caused `SoundPoolPlayer.resume()` to silently
+  fail with "NotPrepared" because `stop()` resets the `prepared` flag that
+  `resume()` checks before calling `start()`. Reverted to `play(source)` in the
+  fast trigger path, which re-establishes `prepared` via `setSource()` before
+  resuming — the only reliable way to restart a stopped SoundPool player.
+
 ## [Unreleased]
 
 ### Changed

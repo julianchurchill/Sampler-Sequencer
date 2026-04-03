@@ -8,6 +8,13 @@ import '../widgets/export_sheet.dart';
 import '../widgets/track_row.dart';
 import '../widgets/transport_bar.dart';
 
+// Build timestamp injected at compile time via --dart-define=BUILD_TIMESTAMP=...
+// Falls back to 'dev' for local debug builds.
+const String _kBuildTimestamp = String.fromEnvironment(
+  'BUILD_TIMESTAMP',
+  defaultValue: 'dev',
+);
+
 /// Main screen: app bar + 4 track rows + transport bar.
 class SequencerScreen extends StatefulWidget {
   const SequencerScreen({super.key});
@@ -17,14 +24,51 @@ class SequencerScreen extends StatefulWidget {
 }
 
 class _SequencerScreenState extends State<SequencerScreen> {
-  String _version = '';
+  PackageInfo? _packageInfo;
 
   @override
   void initState() {
     super.initState();
     PackageInfo.fromPlatform().then((info) {
-      if (mounted) setState(() => _version = 'v${info.version}');
+      if (mounted) setState(() => _packageInfo = info);
     });
+  }
+
+  void _showVersionInfo(BuildContext context) {
+    final info = _packageInfo;
+    showDialog<void>(
+      context: context,
+      builder: (ctx) => AlertDialog(
+        backgroundColor: kPanelColor,
+        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
+        title: const Text(
+          'SAMPLER  SEQUENCER',
+          style: TextStyle(
+            fontSize: 13,
+            fontWeight: FontWeight.w600,
+            letterSpacing: 1.5,
+            color: kTextBright,
+          ),
+        ),
+        content: Column(
+          mainAxisSize: MainAxisSize.min,
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            if (info != null) ...[
+              _InfoRow(label: 'Version', value: 'v${info.version}'),
+              _InfoRow(label: 'Build', value: info.buildNumber),
+            ],
+            _InfoRow(label: 'Built', value: _kBuildTimestamp),
+          ],
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.of(ctx).pop(),
+            child: const Text('OK', style: TextStyle(color: kAccentColor)),
+          ),
+        ],
+      ),
+    );
   }
 
   void _showExport(BuildContext context) {
@@ -47,26 +91,15 @@ class _SequencerScreenState extends State<SequencerScreen> {
     return Scaffold(
       backgroundColor: kBgColor,
       appBar: AppBar(
-        title: Row(
-          crossAxisAlignment: CrossAxisAlignment.baseline,
-          textBaseline: TextBaseline.alphabetic,
-          children: [
-            const Text('SAMPLER  SEQUENCER'),
-            const SizedBox(width: 8),
-            if (_version.isNotEmpty)
-              Text(
-                _version,
-                style: const TextStyle(
-                  fontSize: 10,
-                  color: kTextDim,
-                  fontWeight: FontWeight.w400,
-                  letterSpacing: 0.5,
-                ),
-              ),
-          ],
-        ),
+        title: const Text('SAMPLER  SEQUENCER'),
         toolbarHeight: 36,
         actions: [
+          IconButton(
+            icon: const Icon(Icons.info_outline, size: 18),
+            tooltip: 'Version info',
+            color: kTextDim,
+            onPressed: () => _showVersionInfo(context),
+          ),
           IconButton(
             icon: const Icon(Icons.ios_share, size: 20),
             tooltip: 'Export',
@@ -94,6 +127,36 @@ class _SequencerScreenState extends State<SequencerScreen> {
           ),
           // ---- Transport ----
           const TransportBar(),
+        ],
+      ),
+    );
+  }
+}
+
+/// A single label/value row used inside the version info dialog.
+class _InfoRow extends StatelessWidget {
+  const _InfoRow({required this.label, required this.value});
+
+  final String label;
+  final String value;
+
+  @override
+  Widget build(BuildContext context) {
+    return Padding(
+      padding: const EdgeInsets.only(bottom: 6),
+      child: Row(
+        children: [
+          SizedBox(
+            width: 64,
+            child: Text(
+              label,
+              style: const TextStyle(fontSize: 11, color: kTextDim),
+            ),
+          ),
+          Text(
+            value,
+            style: const TextStyle(fontSize: 11, color: kTextBright),
+          ),
         ],
       ),
     );
