@@ -100,7 +100,7 @@ class _TrimEditorSheetState extends State<TrimEditorSheet> {
 
     // Subscribe to position updates for the progress bar.
     _positionSub?.cancel();
-    _positionSub = model.positionStream(widget.trackIndex).listen((pos) {
+    _positionSub = model.positionStream.listen((pos) {
       if (!mounted || trimDurationMs <= 0) return;
       final progress = (pos.inMilliseconds - startMs) / trimDurationMs;
       setState(() => _playProgress = progress.clamp(0.0, 1.0));

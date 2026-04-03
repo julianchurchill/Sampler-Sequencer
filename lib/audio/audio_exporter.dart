@@ -4,8 +4,8 @@ import 'dart:typed_data';
 import 'package:flutter/foundation.dart';
 
 /// Decoded PCM data from a WAV file.
-class _WavData {
-  _WavData({
+class WavData {
+  WavData({
     required this.sampleRate,
     required this.numChannels,
     required this.samples,
@@ -20,6 +20,99 @@ class _WavData {
   int get numFrames => samples.length ~/ numChannels;
 }
 
+/// Build a 44-byte WAV header for 16-bit PCM data.
+///
+/// [numSamples] is the total number of sample values (frames × channels).
+@visibleForTesting
+Uint8List writeWavHeader({
+  required int numSamples,
+  required int sampleRate,
+  required int numChannels,
+}) {
+  final dataSize = numSamples * numChannels * 2;
+  final hdr = ByteData(44);
+
+  void setFourCC(int offset, String s) {
+    for (int i = 0; i < 4; i++) {
+      hdr.setUint8(offset + i, s.codeUnitAt(i));
+    }
+  }
+
+  setFourCC(0, 'RIFF');
+  hdr.setUint32(4, 36 + dataSize, Endian.little);
+  setFourCC(8, 'WAVE');
+  setFourCC(12, 'fmt ');
+  hdr.setUint32(16, 16, Endian.little);        // fmt chunk size
+  hdr.setUint16(20, 1, Endian.little);         // PCM
+  hdr.setUint16(22, numChannels, Endian.little);
+  hdr.setUint32(24, sampleRate, Endian.little);
+  hdr.setUint32(28, sampleRate * numChannels * 2, Endian.little); // byte rate
+  hdr.setUint16(32, numChannels * 2, Endian.little);              // block align
+  hdr.setUint16(34, 16, Endian.little);        // bits per sample
+  setFourCC(36, 'data');
+  hdr.setUint32(40, dataSize, Endian.little);
+
+  return hdr.buffer.asUint8List();
+}
+
+/// Convert a sub-range of a Float64List mix buffer to little-endian Int16 bytes.
+///
+/// Returns a Uint8List of length (end - start) * 2.
+/// Both Android and iOS are little-endian, matching the WAV spec, so we can
+/// write the Int16List backing buffer directly without per-sample setInt16.
+@visibleForTesting
+Uint8List pcmChunkToBytes(Float64List buf, int start, int end, double scale) {
+  final count = end - start;
+  final pcm = Int16List(count);
+  for (int i = 0; i < count; i++) {
+    pcm[i] = (buf[start + i] * scale * 32767).round().clamp(-32768, 32767);
+  }
+  return pcm.buffer.asUint8List();
+}
+
+/// Write a WAV file in chunks, avoiding holding both Float64List and full
+/// Int16List simultaneously.
+///
+/// Instead of allocating a full Int16List copy of the mix buffer, this streams
+/// the PCM conversion in chunks of [_kChunkSamples] samples, keeping peak
+/// memory close to the Float64List size alone.
+@visibleForTesting
+Future<void> writeWavChunked({
+  required String outputPath,
+  required Float64List mixBuffer,
+  required double scale,
+  required int sampleRate,
+  required int numChannels,
+}) async {
+  const chunkSamples = 8192;
+  final totalSamples = mixBuffer.length;
+  final numFrames = totalSamples ~/ numChannels;
+
+  final header = writeWavHeader(
+    numSamples: numFrames,
+    sampleRate: sampleRate,
+    numChannels: numChannels,
+  );
+
+  final file = File(outputPath);
+  final sink = file.openWrite();
+  sink.add(header);
+
+  for (int offset = 0; offset < totalSamples; offset += chunkSamples) {
+    final end = (offset + chunkSamples).clamp(0, totalSamples);
+    sink.add(pcmChunkToBytes(mixBuffer, offset, end, scale));
+  }
+
+  await sink.close();
+}
+
+/// Parse a WAV file into PCM frames.
+/// Returns null if the file is missing, not a WAV, or not PCM format.
+@visibleForTesting
+Future<WavData?> readWav(String path) async {
+  return AudioExporter._readWav(path);
+}
+
 /// Offline renderer: reads each track's WAV file, mixes them at the correct
 /// step-sequence timing, and writes a stereo 44100 Hz 16-bit WAV.
 class AudioExporter {
@@ -29,7 +122,7 @@ class AudioExporter {
 
   /// Parse a WAV file into PCM frames.
   /// Returns null if the file is missing, not a WAV, or not PCM format.
-  static Future<_WavData?> _readWav(String path) async {
+  static Future<WavData?> _readWav(String path) async {
     try {
       final bytes = await File(path).readAsBytes();
       if (bytes.length < 44) return null;
@@ -86,7 +179,7 @@ class AudioExporter {
         return null; // unsupported bit depth
       }
 
-      return _WavData(
+      return WavData(
         sampleRate: sampleRate,
         numChannels: numChannels,
         samples: out,
@@ -120,7 +213,7 @@ class AudioExporter {
     const numSteps = 16;
 
     // ── Load WAV data for every track ───────────────────────────────────────
-    final trackData = List<_WavData?>.filled(numTracks, null);
+    final trackData = List<WavData?>.filled(numTracks, null);
     for (int t = 0; t < numTracks; t++) {
       final wav = await _readWav(samplePaths[t]);
       if (wav == null) {
@@ -199,64 +292,26 @@ class AudioExporter {
       }
     }
 
-    // ── Normalise & convert to Int16 ────────────────────────────────────────
+    // ── Normalise & write WAV in chunks ────────────────────────────────────
     double peak = 0;
     for (final v in buf) {
       if (v.abs() > peak) peak = v.abs();
     }
     final scale = peak > 1.0 ? 1.0 / peak : 1.0;
 
-    final pcm = Int16List(outputFrames * _kNumChannels);
-    for (int i = 0; i < pcm.length; i++) {
-      pcm[i] = (buf[i] * scale * 32767).round().clamp(-32768, 32767);
-    }
-
-    // ── Write WAV ────────────────────────────────────────────────────────────
-    await _writeWav(outputPath, pcm, _kSampleRate, _kNumChannels);
+    // Stream PCM conversion in chunks instead of holding a second full-size
+    // Int16List buffer.  This halves peak RSS for long exports.
+    await writeWavChunked(
+      outputPath: outputPath,
+      mixBuffer: buf,
+      scale: scale,
+      sampleRate: _kSampleRate,
+      numChannels: _kNumChannels,
+    );
     onProgress?.call(1.0);
   }
 
   static int _msToFrames(int ms, int sampleRate) =>
       (ms * sampleRate / 1000).round();
 
-  static Future<void> _writeWav(
-    String path,
-    Int16List pcm,
-    int sampleRate,
-    int numChannels,
-  ) async {
-    final dataSize = pcm.length * 2;
-    final hdr = ByteData(44);
-
-    void setFourCC(int offset, String s) {
-      for (int i = 0; i < 4; i++) {
-        hdr.setUint8(offset + i, s.codeUnitAt(i));
-      }
-    }
-
-    setFourCC(0, 'RIFF');
-    hdr.setUint32(4, 36 + dataSize, Endian.little);
-    setFourCC(8, 'WAVE');
-    setFourCC(12, 'fmt ');
-    hdr.setUint32(16, 16, Endian.little);        // fmt chunk size
-    hdr.setUint16(20, 1, Endian.little);         // PCM
-    hdr.setUint16(22, numChannels, Endian.little);
-    hdr.setUint32(24, sampleRate, Endian.little);
-    hdr.setUint32(28, sampleRate * numChannels * 2, Endian.little); // byte rate
-    hdr.setUint16(32, numChannels * 2, Endian.little);              // block align
-    hdr.setUint16(34, 16, Endian.little);        // bits per sample
-    setFourCC(36, 'data');
-    hdr.setUint32(40, dataSize, Endian.little);
-
-    final pcmBytes = ByteData(dataSize);
-    for (int i = 0; i < pcm.length; i++) {
-      pcmBytes.setInt16(i * 2, pcm[i], Endian.little);
-    }
-
-    final file = File(path);
-    final sink = file.openWrite();
-    sink.add(hdr.buffer.asUint8List());
-    sink.add(pcmBytes.buffer.asUint8List());
-    await sink.close();
-  }
 }

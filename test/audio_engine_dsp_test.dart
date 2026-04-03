@@ -56,13 +56,8 @@ void main() {
     const int n = 2000; // longer than 2 × kWavFadeSamples
     final constantSamples = Float64List(n)..fillRange(0, n, 1.0);
 
-    Uint8List? wav;
-    late ByteData pcm;
-
-    setUp(() {
-      wav = buildWav(constantSamples, _kSampleRate);
-      pcm = ByteData.sublistView(wav!);
-    });
+    final wav = buildWav(constantSamples, _kSampleRate);
+    final pcm = ByteData.sublistView(wav);
 
     int readPcm(int sampleIndex) =>
         pcm.getInt16(44 + sampleIndex * 2, Endian.little);

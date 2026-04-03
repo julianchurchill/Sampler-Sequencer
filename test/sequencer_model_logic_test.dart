@@ -13,6 +13,10 @@ void main() {
   late MockAudioEngine audio;
   late SequencerModel model;
 
+  setUpAll(() {
+    registerFallbackValue(Duration.zero);
+  });
+
   setUp(() {
     SharedPreferences.setMockInitialValues({});
     audio = MockAudioEngine();
@@ -28,8 +32,23 @@ void main() {
     when(() => audio.trimStart(any())).thenReturn(Duration.zero);
     when(() => audio.trimEnd(any())).thenReturn(null);
     when(() => audio.setMuted(any(), any())).thenReturn(null);
+    when(() => audio.setPreset(any(), any())).thenAnswer((_) async {});
+    when(() => audio.clearCustomPath(any()))..thenAnswer((_) async {});
+    when(() => audio.setTrim(any(), any(), any())).thenReturn(null);
+    when(() => audio.clearTrim(any())).thenReturn(null);
+    when(() => audio.setTrackVolume(any(), any()))
+        .thenAnswer((_) async {});
+    when(() => audio.dispose()).thenAnswer((_) async {});
 
     model = SequencerModel(audio: audio);
+  });
+
+  tearDown(() async {
+    model.dispose();
+    // Flush pending microtasks (e.g. fire-and-forget _save() callbacks) before
+    // resetting the mock, so stale callbacks don't hit a cleared stub table.
+    await Future<void>.delayed(Duration.zero);
+    reset(audio);
   });
 
   // -------------------------------------------------------------------------
@@ -66,12 +85,14 @@ void main() {
 
     test('notifies listeners and updates bpm', () {
       int notifyCount = 0;
-      model.addListener(() => notifyCount++);
+      void listener() => notifyCount++;
+      model.addListener(listener);
       model.setBpm(140);
       expect(notifyCount, greaterThan(0),
           reason: 'setBpm should call notifyListeners so the UI can redraw');
       expect(model.bpm, 140,
           reason: 'bpm should be 140 after setBpm(140)');
+      model.removeListener(listener);
     });
   });
 
@@ -92,12 +113,14 @@ void main() {
 
     test('notifies listeners and updates step state', () {
       int notifyCount = 0;
-      model.addListener(() => notifyCount++);
+      void listener() => notifyCount++;
+      model.addListener(listener);
       model.toggleStep(0, 0);
       expect(notifyCount, greaterThan(0),
           reason: 'toggleStep should call notifyListeners so the grid redraws');
       expect(model.stepEnabled(0, 0), isTrue,
           reason: 'Step (0, 0) should be enabled after toggleStep');
+      model.removeListener(listener);
     });
 
     test('toggling one step does not affect adjacent steps', () {
@@ -131,12 +154,14 @@ void main() {
 
     test('notifies listeners and updates velocity', () {
       int notifyCount = 0;
-      model.addListener(() => notifyCount++);
+      void listener() => notifyCount++;
+      model.addListener(listener);
       model.setStepVelocity(0, 0, 0.5);
       expect(notifyCount, greaterThan(0),
           reason: 'setStepVelocity should call notifyListeners so the pad indicator redraws');
       expect(model.stepVelocity(0, 0), 0.5,
           reason: 'Velocity for step (0,0) should be 0.5 after setStepVelocity(0, 0, 0.5)');
+      model.removeListener(listener);
     });
   });
 
@@ -195,13 +220,15 @@ void main() {
 
     test('notifies listeners and leaves all steps disabled', () {
       int notifyCount = 0;
+      void listener() => notifyCount++;
       model.toggleStep(0, 0);
-      model.addListener(() => notifyCount++);
+      model.addListener(listener);
       model.clearAllSteps();
       expect(notifyCount, greaterThan(0),
           reason: 'clearAllSteps should call notifyListeners so the grid redraws');
       expect(model.stepEnabled(0, 0), isFalse,
           reason: 'Step (0,0) should be disabled after clearAllSteps');
+      model.removeListener(listener);
     });
   });
 
@@ -253,6 +280,151 @@ void main() {
       model.setBpm(300);
       expect(model.stepDuration, const Duration(microseconds: 50000),
           reason: '60 000 000 µs / (300 BPM × 4 steps/beat) = 50 000 µs per step');
+    });
+  });
+
+  // -------------------------------------------------------------------------
+  group('toggleMute', () {
+    test('delegates to audio engine setMuted with inverted current state', () {
+      when(() => audio.isMuted(0)).thenReturn(false);
+      model.toggleMute(0);
+      verify(() => audio.setMuted(0, true)).called(1);
+    });
+
+    test('unmutes a currently muted track', () {
+      when(() => audio.isMuted(1)).thenReturn(true);
+      model.toggleMute(1);
+      verify(() => audio.setMuted(1, false)).called(1);
+    });
+
+    test('notifies listeners after toggling mute', () {
+      int notifyCount = 0;
+      void listener() => notifyCount++;
+      model.addListener(listener);
+      when(() => audio.isMuted(0)).thenReturn(false);
+      model.toggleMute(0);
+      expect(notifyCount, greaterThan(0),
+          reason: 'toggleMute should call notifyListeners so the UI updates the mute indicator');
+      model.removeListener(listener);
+    });
+  });
+
+  // -------------------------------------------------------------------------
+  group('clearCustomSample', () {
+    test('delegates to audio engine clearCustomPath', () {
+      model.clearCustomSample(2);
+      verify(() => audio.clearCustomPath(2)).called(1);
+    });
+
+    test('notifies listeners after clearing custom sample', () {
+      int notifyCount = 0;
+      void listener() => notifyCount++;
+      model.addListener(listener);
+      model.clearCustomSample(0);
+      expect(notifyCount, greaterThan(0),
+          reason: 'clearCustomSample should call notifyListeners so the track name updates');
+      model.removeListener(listener);
+    });
+  });
+
+  // -------------------------------------------------------------------------
+  group('loadPreset', () {
+    test('delegates to audio engine setPreset', () {
+      model.loadPreset(1, 3);
+      verify(() => audio.setPreset(1, 3)).called(1);
+    });
+
+    test('notifies listeners after loading preset', () {
+      int notifyCount = 0;
+      void listener() => notifyCount++;
+      model.addListener(listener);
+      model.loadPreset(0, 5);
+      expect(notifyCount, greaterThan(0),
+          reason: 'loadPreset should call notifyListeners so the track name and UI update');
+      model.removeListener(listener);
+    });
+  });
+
+  // -------------------------------------------------------------------------
+  group('setTrim', () {
+    test('delegates start and end to audio engine setTrim', () {
+      final start = const Duration(milliseconds: 100);
+      final end = const Duration(milliseconds: 500);
+      model.setTrim(0, start, end);
+      verify(() => audio.setTrim(0, start, end)).called(1);
+    });
+
+    test('delegates with null end to audio engine setTrim', () {
+      final start = const Duration(milliseconds: 200);
+      model.setTrim(1, start, null);
+      verify(() => audio.setTrim(1, start, null)).called(1);
+    });
+
+    test('notifies listeners after setting trim', () {
+      int notifyCount = 0;
+      void listener() => notifyCount++;
+      model.addListener(listener);
+      model.setTrim(0, Duration.zero, const Duration(milliseconds: 300));
+      expect(notifyCount, greaterThan(0),
+          reason: 'setTrim should call notifyListeners so the trim UI updates');
+      model.removeListener(listener);
+    });
+  });
+
+  // -------------------------------------------------------------------------
+  group('clearTrim', () {
+    test('delegates to audio engine clearTrim', () {
+      model.clearTrim(3);
+      verify(() => audio.clearTrim(3)).called(1);
+    });
+
+    test('notifies listeners after clearing trim', () {
+      int notifyCount = 0;
+      void listener() => notifyCount++;
+      model.addListener(listener);
+      model.clearTrim(0);
+      expect(notifyCount, greaterThan(0),
+          reason: 'clearTrim should call notifyListeners so the trim UI resets');
+      model.removeListener(listener);
+    });
+  });
+
+  // -------------------------------------------------------------------------
+  group('setTrackVolume', () {
+    test('delegates to audio engine setTrackVolume', () async {
+      await model.setTrackVolume(2, 0.75);
+      verify(() => audio.setTrackVolume(2, 0.75)).called(1);
+    });
+
+    test('notifies listeners after setting volume', () async {
+      int notifyCount = 0;
+      void listener() => notifyCount++;
+      model.addListener(listener);
+      await model.setTrackVolume(0, 0.5);
+      expect(notifyCount, greaterThan(0),
+          reason: 'setTrackVolume should call notifyListeners so the volume slider updates');
+      model.removeListener(listener);
+    });
+  });
+
+  // -------------------------------------------------------------------------
+  group('_save error handling', () {
+    test('does not throw an unhandled error when persistence fails', () async {
+      // Make customPath throw to simulate a persistence failure inside the
+      // fire-and-forget _save() callback.  Without a catchError handler this
+      // would surface as an unhandled Future rejection and fail the test.
+      when(() => audio.customPath(any()))
+          .thenThrow(StateError('simulated persistence failure'));
+
+      // setBpm triggers _save() internally.
+      model.setBpm(100);
+
+      // Flush microtasks so the fire-and-forget Future completes within the
+      // test zone (which catches unhandled async errors).
+      await Future<void>.delayed(Duration.zero);
+
+      expect(model.bpm, 100,
+          reason: '_save() failure should not prevent the BPM from being set');
     });
   });
 }
