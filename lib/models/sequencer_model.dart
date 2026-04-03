@@ -43,6 +43,10 @@ class SequencerModel extends ChangeNotifier {
   late final AudioEngine _audio;
   Timer? _stepTimer;
 
+  /// Non-null in debug builds when the most recent [_save] call failed.
+  /// The UI should display this to the developer and call [clearSaveError].
+  Object? _saveError;
+
   SequencerModel({AudioEngine? audio}) : _audio = audio ?? AudioEngine();
 
   // ---- Getters ----
@@ -63,6 +67,17 @@ class SequencerModel extends ChangeNotifier {
   Duration trimStart(int track) => _audio.trimStart(track);
   Duration? trimEnd(int track) => _audio.trimEnd(track);
   bool isMuted(int track) => _audio.isMuted(track);
+  Object? get saveError => _saveError;
+
+  /// Clear the last save error after it has been displayed to the user.
+  void clearSaveError() => _saveError = null;
+
+  /// For testing only: simulate a save error without going through SharedPreferences.
+  @visibleForTesting
+  void setSaveErrorForTest(Object e) {
+    _saveError = e;
+    notifyListeners();
+  }
 
   // ---- Persistence ----
 
@@ -167,6 +182,10 @@ class SequencerModel extends ChangeNotifier {
         prefs.setString('$_kPrefsStepVelocity$t',
             _stepVelocity[t].map((v) => v.toStringAsFixed(3)).join(','));
       }
+    }).catchError((Object e) {
+      debugPrint('SequencerModel _save error: $e');
+      _saveError = e;
+      notifyListeners();
     });
   }
 

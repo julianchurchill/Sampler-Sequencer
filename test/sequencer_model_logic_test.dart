@@ -206,6 +206,36 @@ void main() {
   });
 
   // -------------------------------------------------------------------------
+  group('saveError', () {
+    test('is null initially', () {
+      expect(model.saveError, isNull,
+          reason: 'No save error should exist before any save attempt fails');
+    });
+
+    test('setSaveErrorForTest exposes the error via saveError getter', () {
+      final err = Exception('storage full');
+      model.setSaveErrorForTest(err);
+      expect(model.saveError, err,
+          reason: 'saveError must return the exact error passed to setSaveErrorForTest()');
+    });
+
+    test('setSaveErrorForTest calls notifyListeners', () {
+      int notifyCount = 0;
+      model.addListener(() => notifyCount++);
+      model.setSaveErrorForTest(Exception('disk full'));
+      expect(notifyCount, 1,
+          reason: 'Setting a save error must call notifyListeners() so the UI can react');
+    });
+
+    test('clearSaveError resets saveError to null', () {
+      model.setSaveErrorForTest(Exception('disk full'));
+      model.clearSaveError();
+      expect(model.saveError, isNull,
+          reason: 'clearSaveError() must nullify the error so the UI does not re-show stale errors');
+    });
+  });
+
+  // -------------------------------------------------------------------------
   group('stepDuration', () {
     test('is 125 000 µs at 120 BPM (16th notes)', () {
       model.setBpm(120);
