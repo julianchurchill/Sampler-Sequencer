@@ -48,7 +48,6 @@ class _SequencerScreenState extends State<SequencerScreen> {
   }
 
   void _onModelChanged() {
-    if (!kDebugMode) return;
     final err = _model?.saveError;
     if (err == null) return;
     _model!.clearSaveError();
