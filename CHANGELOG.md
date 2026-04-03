@@ -9,9 +9,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Fixed
 - `_save()` in `SequencerModel` no longer silently swallows `SharedPreferences`
-  errors. Failures are now logged via `debugPrint` and, in debug builds, surfaced
-  to the developer as an `AlertDialog` so data-loss scenarios are immediately
-  visible during development.
+  errors. Failures are now logged via `debugPrint` and surfaced as an `AlertDialog`
+  so data-loss scenarios are immediately visible during development.
 
 ## [2.3.1] - 2026-04-02
 
