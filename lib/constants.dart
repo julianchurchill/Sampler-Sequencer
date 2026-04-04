@@ -58,15 +58,15 @@ class DrumPreset {
 }
 
 final List<DrumPreset> kDrumPresets = [
-  DrumPreset('Kick 808',  generateKick808),
-  DrumPreset('Kick Hard', generateKickHard),
-  DrumPreset('Snare',     generateSnare),
-  DrumPreset('Rim Shot',  generateRimShot),
-  DrumPreset('HH Closed', generateHiHatClosed),
-  DrumPreset('HH Open',   generateHiHatOpen),
-  DrumPreset('Clap',      generateClap),
-  DrumPreset('Tom',       generateTom),
-  DrumPreset('Cowbell',   generateCowbell),
+  const DrumPreset('Kick 808',  generateKick808),
+  const DrumPreset('Kick Hard', generateKickHard),
+  const DrumPreset('Snare',     generateSnare),
+  const DrumPreset('Rim Shot',  generateRimShot),
+  const DrumPreset('HH Closed', generateHiHatClosed),
+  const DrumPreset('HH Open',   generateHiHatOpen),
+  const DrumPreset('Clap',      generateClap),
+  const DrumPreset('Tom',       generateTom),
+  const DrumPreset('Cowbell',   generateCowbell),
 ];
 
 /// Default preset index assigned to each track (0=Kick808, 2=Snare, 4=HH Closed, 5=HH Open).

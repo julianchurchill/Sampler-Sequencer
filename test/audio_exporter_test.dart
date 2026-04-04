@@ -79,7 +79,7 @@ void main() {
       expect(encodedRate, sampleRate,
           reason: 'sample rate at offset 24 should be $sampleRate; got $encodedRate');
       final byteRate = bd.getUint32(28, Endian.little);
-      final expectedByteRate = sampleRate * numChannels * 2;
+      const expectedByteRate = sampleRate * numChannels * 2;
       expect(byteRate, expectedByteRate,
           reason: 'byte rate at offset 28 should be $expectedByteRate; got $byteRate');
     });
