@@ -62,7 +62,7 @@ class TransportBar extends StatelessWidget {
             mainAxisAlignment: MainAxisAlignment.center,
             crossAxisAlignment: CrossAxisAlignment.start,
             children: [
-              Text(
+              const Text(
                 'BPM',
                 style: TextStyle(
                   color: kTextDim,
@@ -105,7 +105,7 @@ class TransportBar extends StatelessWidget {
           const Spacer(),
 
           // ---- Step count label ----
-          Text(
+          const Text(
             '16 STEPS  •  4/4',
             style: TextStyle(
               color: kTextDim,

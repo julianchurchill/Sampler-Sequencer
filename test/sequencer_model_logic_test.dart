@@ -33,7 +33,7 @@ void main() {
     when(() => audio.trimEnd(any())).thenReturn(null);
     when(() => audio.setMuted(any(), any())).thenReturn(null);
     when(() => audio.setPreset(any(), any())).thenAnswer((_) async {});
-    when(() => audio.clearCustomPath(any()))..thenAnswer((_) async {});
+    when(() => audio.clearCustomPath(any())).thenAnswer((_) async {});
     when(() => audio.setTrim(any(), any(), any())).thenReturn(null);
     when(() => audio.clearTrim(any())).thenReturn(null);
     when(() => audio.setTrackVolume(any(), any()))
@@ -348,14 +348,14 @@ void main() {
   // -------------------------------------------------------------------------
   group('setTrim', () {
     test('delegates start and end to audio engine setTrim', () {
-      final start = const Duration(milliseconds: 100);
-      final end = const Duration(milliseconds: 500);
+      const start = Duration(milliseconds: 100);
+      const end = Duration(milliseconds: 500);
       model.setTrim(0, start, end);
       verify(() => audio.setTrim(0, start, end)).called(1);
     });
 
     test('delegates with null end to audio engine setTrim', () {
-      final start = const Duration(milliseconds: 200);
+      const start = Duration(milliseconds: 200);
       model.setTrim(1, start, null);
       verify(() => audio.setTrim(1, start, null)).called(1);
     });

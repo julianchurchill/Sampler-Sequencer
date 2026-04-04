@@ -445,7 +445,7 @@ class _SoundPickerSheetState extends State<_SoundPickerSheet> {
           const SizedBox(height: 12),
 
           // ---- Built-in presets ----
-          _SectionLabel(label: 'PRESETS'),
+          const _SectionLabel(label: 'PRESETS'),
           const SizedBox(height: 8),
           Wrap(
             spacing: 8,
@@ -495,11 +495,11 @@ class _SoundPickerSheetState extends State<_SoundPickerSheet> {
           ],
           const SizedBox(height: 8),
           if (library.samples.isEmpty)
-            Padding(
-              padding: const EdgeInsets.symmetric(vertical: 4),
+            const Padding(
+              padding: EdgeInsets.symmetric(vertical: 4),
               child: Text(
                 'No recordings yet. Tap ⏺ RECORD to capture a sample.',
-                style: const TextStyle(color: kTextDim, fontSize: 10),
+                style: TextStyle(color: kTextDim, fontSize: 10),
               ),
             )
           else

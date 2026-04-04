@@ -128,28 +128,28 @@ void main() {
   group('drum generators', () {
     test('generateKick808 produces the expected number of samples (500 ms)', () {
       final buf = generateKick808(_kSampleRate);
-      final expected = _kSampleRate * 500 ~/ 1000;
+      const expected = _kSampleRate * 500 ~/ 1000;
       expect(buf.length, expected,
           reason: 'Kick 808 is 500 ms — expected $expected samples at $_kSampleRate Hz, got ${buf.length}');
     });
 
     test('generateKickHard produces the expected number of samples (300 ms)', () {
       final buf = generateKickHard(_kSampleRate);
-      final expected = _kSampleRate * 300 ~/ 1000;
+      const expected = _kSampleRate * 300 ~/ 1000;
       expect(buf.length, expected,
           reason: 'Kick Hard is 300 ms — expected $expected samples at $_kSampleRate Hz, got ${buf.length}');
     });
 
     test('generateHiHatClosed produces the expected number of samples (80 ms)', () {
       final buf = generateHiHatClosed(_kSampleRate);
-      final expected = _kSampleRate * 80 ~/ 1000;
+      const expected = _kSampleRate * 80 ~/ 1000;
       expect(buf.length, expected,
           reason: 'HH Closed is 80 ms — expected $expected samples at $_kSampleRate Hz, got ${buf.length}');
     });
 
     test('generateCowbell produces the expected number of samples (800 ms)', () {
       final buf = generateCowbell(_kSampleRate);
-      final expected = _kSampleRate * 800 ~/ 1000;
+      const expected = _kSampleRate * 800 ~/ 1000;
       expect(buf.length, expected,
           reason: 'Cowbell is 800 ms — expected $expected samples at $_kSampleRate Hz, got ${buf.length}');
     });

@@ -127,7 +127,7 @@ class AudioExporter {
       final bytes = await File(path).readAsBytes();
       if (bytes.length < 44) return null;
 
-      final asString = (List<int> b) => String.fromCharCodes(b);
+      String asString(List<int> b) => String.fromCharCodes(b);
       if (asString(bytes.sublist(0, 4)) != 'RIFF') return null;
       if (asString(bytes.sublist(8, 12)) != 'WAVE') return null;
 

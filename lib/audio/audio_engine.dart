@@ -230,7 +230,7 @@ class AudioEngine {
       await player.setPlayerMode(PlayerMode.lowLatency);
       await player.setReleaseMode(ReleaseMode.stop);
       await player.setAudioContext(AudioContext(
-        android: AudioContextAndroid(audioFocus: AndroidAudioFocus.none),
+        android: const AudioContextAndroid(audioFocus: AndroidAudioFocus.none),
       ));
       _players.add(player);
     }
@@ -250,7 +250,7 @@ class AudioEngine {
     await _previewPlayer.setPlayerMode(PlayerMode.mediaPlayer);
     await _previewPlayer.setReleaseMode(ReleaseMode.stop);
     await _previewPlayer.setAudioContext(AudioContext(
-      android: AudioContextAndroid(audioFocus: AndroidAudioFocus.none),
+      android: const AudioContextAndroid(audioFocus: AndroidAudioFocus.none),
     ));
 
     _ready = true;
@@ -376,7 +376,7 @@ class AudioEngine {
     await player.setPlayerMode(mode);
     await player.setReleaseMode(ReleaseMode.stop);
     await player.setAudioContext(AudioContext(
-      android: AudioContextAndroid(audioFocus: AndroidAudioFocus.none),
+      android: const AudioContextAndroid(audioFocus: AndroidAudioFocus.none),
     ));
     await player.setSource(DeviceFileSource(samplePath(track)));
     _primarySourcePath[track] = samplePath(track);

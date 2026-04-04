@@ -112,7 +112,7 @@ class _SequencerScreenState extends State<SequencerScreen> {
               _InfoRow(label: 'Version', value: 'v${info.version}'),
               _InfoRow(label: 'Build', value: info.buildNumber),
             ],
-            _InfoRow(label: 'Built', value: _kBuildTimestamp),
+            const _InfoRow(label: 'Built', value: _kBuildTimestamp),
           ],
         ),
         actions: [
