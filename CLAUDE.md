@@ -37,6 +37,10 @@ Every pull request that changes user-facing behaviour **must**:
 
 Pure housekeeping changes (CI config, docs, tooling) do not require a version bump, but should still note the change in `CHANGELOG.md` if it affects developers.
 
+## TODO
+
+When completing a task from `TODO.md`, mark it `- [x]` and move it to the **bottom** of its section, but **above** any already-completed `[x]` items there, so the newest completion sits at the top of the completed group.
+
 ## Pre-Commit Code Review
 
 Before committing any code change, perform a self-review of the diff. Work through the checklist below and fix any issues found before proceeding with the commit.
