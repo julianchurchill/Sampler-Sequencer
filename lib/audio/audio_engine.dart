@@ -161,18 +161,20 @@ class AudioEngine {
   /// Primary player index for [track] (slot 0 — used for trimmed playback).
   int _primary(int track) => track * _kSlotsPerTrack;
 
-  Future<void> setTrackVolume(int track, double volume) async {
+  Future<void> setTrackVolume(int track, double volume) {
     _trackVolume[track] = volume.clamp(0.0, 1.0);
-    // Apply to both slots so whichever is currently playing reflects the change.
-    for (int s = 0; s < _kSlotsPerTrack; s++) {
-      await _players[track * _kSlotsPerTrack + s].setVolume(_trackVolume[track]);
-    }
+    // Apply to all slots in parallel so whichever is currently playing
+    // reflects the change without serialising 6 round-trips.
+    return Future.wait([
+      for (int s = 0; s < _kSlotsPerTrack; s++)
+        _players[track * _kSlotsPerTrack + s].setVolume(_trackVolume[track]),
+    ]);
   }
 
   /// Test-only initialiser — bypasses file I/O and platform channels.
   ///
   /// Injects pre-built [players] (must have exactly
-  /// `4 × [slotsPerTrack]` entries, track T owning slots
+  /// `kNumTracks × [slotsPerTrack]` entries, track T owning slots
   /// `[T*slotsPerTrack .. T*slotsPerTrack + slotsPerTrack - 1]`) and a
   /// [previewPlayer], then marks the engine ready. Optionally accepts
   /// [presetPaths]; if omitted, placeholder paths are used — sufficient for
@@ -184,9 +186,9 @@ class AudioEngine {
     List<String>? presetPaths,
   }) {
     assert(
-      players.length == 4 * _kSlotsPerTrack,
-      'initForTest expects ${4 * _kSlotsPerTrack} players '
-      '(4 tracks × $_kSlotsPerTrack slots), got ${players.length}',
+      players.length == kNumTracks * _kSlotsPerTrack,
+      'initForTest expects ${kNumTracks * _kSlotsPerTrack} players '
+      '($kNumTracks tracks × $_kSlotsPerTrack slots), got ${players.length}',
     );
     _players.addAll(players);
     _previewPlayer = previewPlayer;
@@ -396,6 +398,7 @@ class AudioEngine {
     if (_previewPlaying) return null;
     final path = samplePath(track);
     try {
+      await _previewPlayer.stop();
       await _previewPlayer.setSource(DeviceFileSource(path));
       return await _previewPlayer.getDuration();
     } catch (e) {

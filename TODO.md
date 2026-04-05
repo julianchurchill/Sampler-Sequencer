@@ -30,17 +30,18 @@ For details and suggested fixes see `docs\quality\runs\2026-04-02\16-56\quality.
 ### Architecture
 
 - [ ] **minor**: AudioExporter contains its own private WAV parser (_readWav, _WavData) that duplicates knowledge already present in dsp_utils.dart (buildWav)
+- [x] **minor**: AudioExporter.export() uses hardcoded literal 4 / 16 for track/step counts instead of kNumTracks / kNumSteps
 - [x] **major**: Track count is hardcoded as the literal integer 4 in at least seven places inside AudioEngine
 
 ### Maintainability
 
-- [ ] **major**: loadCustomSample2 is a poorly-named method
+- [x] **major**: loadCustomSample2 is a poorly-named method
 - [ ] **minor**: _SoundPickerSheetState is a long method / god-class concern within track_row.dart
 - [ ] **minor**: trigger() has a cyclomatic complexity of approximately 14
-- [ ] **minor**: SampleEntry exposes mutable fields (String path, String name) on a public class
-- [ ] **minor**: Random seed literals (42, 99, 7, 13, 55) are scattered across six drum generator functions with no named constants or comments explaining their significance
-- [ ] **minor**: SequencerModel.init() is approximately 65 lines long and mixes three concerns: audio engine initialisation, SharedPreferences restoration for steps and BPM, and per-track state restoration
-- [ ] **minor**: In _togglePreview(), the local variable effectiveEndMs is computed to resolve the null end case, but this same null-resolution logic is duplicated at line 135 in _applyTrim() (endMs < dur.inMilliseconds ? Duration(milliseconds: endMs) : null)
+- [x] **minor**: SampleEntry exposes mutable fields (String path, String name) on a public class
+- [x] **minor**: Random seed literals (42, 99, 7, 13, 55) are scattered across six drum generator functions with no named constants or comments explaining their significance
+- [x] **minor**: SequencerModel.init() is approximately 65 lines long and mixes three concerns: audio engine initialisation, SharedPreferences restoration for steps and BPM, and per-track state restoration
+- [x] **minor**: In _togglePreview(), the local variable effectiveEndMs is computed to resolve the null end case, but this same null-resolution logic is duplicated at line 135 in _applyTrim() (endMs < dur.inMilliseconds ? Duration(milliseconds: endMs) : null)
 - [ ] **info**: The comment at line 189 inside init() still reads 'Two low-latency SoundPool players per track (8 total).' but the code was updated to use _kSlotsPerTrack = 6 per track (24 total)
 - [x] **major**: positionStream(int track) accepts a track parameter but completely ignores it, always returning _previewPlayer.onPositionChanged
 - [x] **major**: _save() uses fire-and-forget SharedPreferences.getInstance().then() with no error handling
@@ -51,9 +52,9 @@ For details and suggested fixes see `docs\quality\runs\2026-04-02\16-56\quality.
 
 ### Reliability
 
-- [ ] **minor**: getTrackDuration() calls _previewPlayer.setSource() without stopping or checking whether the preview player is currently playing
-- [ ] **minor**: _loadIndex() calls File(path).exists() sequentially for every index entry, one await per file
-- [ ] **minor**: _play() calls _audio.init() a second time as a fallback if isReady is false
+- [x] **minor**: getTrackDuration() calls _previewPlayer.setSource() without stopping or checking whether the preview player is currently playing
+- [x] **minor**: _loadIndex() calls File(path).exists() sequentially for every index entry, one await per file
+- [x] **minor**: _play() calls _audio.init() a second time as a fallback if isReady is false
 - [ ] **info**: AudioEngine.init() synthesises all 9 preset WAV files and writes them to the temp directory on every cold start
 - [x] **major**: Fire-and-forget _save() swallows all SharedPreferences errors silently
 - [x] **major**: _schedulePlayerModeSwitch is fire-and-forget: _rebuildPlayer is unawaited
@@ -61,7 +62,7 @@ For details and suggested fixes see `docs\quality\runs\2026-04-02\16-56\quality.
 
 ### Performance
 
-- [ ] **minor**: setTrackVolume() applies the volume change sequentially across all _kSlotsPerTrack players (6 awaits in a loop)
+- [x] **minor**: setTrackVolume() applies the volume change sequentially across all _kSlotsPerTrack players (6 awaits in a loop)
 - [ ] **minor**: _fireAndAdvance() calls notifyListeners() on every sequencer tick to update the playhead highlight
 - [ ] **info**: AudioExporter.export() runs entirely on the calling isolate (the Flutter UI isolate)
 - [x] **major**: The entire mix buffer is allocated as a Float64List in memory before conversion
@@ -69,9 +70,9 @@ For details and suggested fixes see `docs\quality\runs\2026-04-02\16-56\quality.
 
 ### Security
 
-- [ ] **minor**: Exception details leaked to user in export error snackbar
+- [x] **minor**: Exception details leaked to user in export error snackbar
 - [ ] **minor**: User-supplied file path from file picker is used directly in DeviceFileSource without sanitization
-- [ ] **minor**: Custom file path restored from SharedPreferences is used without existence or validity check
+- [x] **minor**: Custom file path restored from SharedPreferences is used without existence or validity check
 - [ ] **minor**: Export output path is constructed from user-controlled timestamp but written without validating the parent directory
 - [ ] **info**: File extension extracted from user-provided temp path via string split without validation
 - [ ] **info**: Several dependencies use caret version ranges (e.g. ^6.0.0) which allow automatic minor/patch upgrades
@@ -79,11 +80,11 @@ For details and suggested fixes see `docs\quality\runs\2026-04-02\16-56\quality.
 
 ### Testing
 
-- [ ] **minor**: The 'notifies listeners and updates bpm' test adds a listener but never removes it before the test ends
-- [ ] **minor**: Same listener leak as above: the 'notifies listeners and updates step state' test adds a listener without removing it
-- [ ] **minor**: SequencerModel is constructed in setUp() but dispose() is never called in tearDown()
-- [ ] **minor**: dspEnv is tested for i=0 (full amplitude), i=totalSamples (near-zero), and monotonic decrease over [0, 50)
-- [ ] **minor**: buildWav is tested with an empty Float64List (0 samples) for header structure
+- [x] **minor**: The 'notifies listeners and updates bpm' test adds a listener but never removes it before the test ends
+- [x] **minor**: Same listener leak as above: the 'notifies listeners and updates step state' test adds a listener without removing it
+- [x] **minor**: SequencerModel is constructed in setUp() but dispose() is never called in tearDown()
+- [x] **minor**: dspEnv is tested for i=0 (full amplitude), i=totalSamples (near-zero), and monotonic decrease over [0, 50)
+- [x] **minor**: buildWav is tested with an empty Float64List (0 samples) for header structure
 - [ ] **info**: constants_test.dart contains only value-equality assertions (expect(k, literal))
 - [ ] **info**: AppAudioRecorder is a thin wrapper with no tests
 - [x] **major**: MockAudioEngine is configured in setUp but mock state is never reset between tests

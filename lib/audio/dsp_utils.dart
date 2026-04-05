@@ -77,6 +77,15 @@ double dspEnv(int i, int totalSamples, double decayRate) =>
 // Synthesised drum generators
 // ---------------------------------------------------------------------------
 
+// Deterministic seeds for noise-based drum generators.
+// Each value was chosen to produce a natural-sounding stochastic texture for
+// the respective instrument; changing a seed would alter the timbre.
+const int _kSnareNoiseSeed = 42;
+const int _kRimShotNoiseSeed = 99;
+const int _kHiHatClosedNoiseSeed = 7;
+const int _kHiHatOpenNoiseSeed = 13;
+const int _kClapNoiseSeed = 55;
+
 Float64List generateKick808(int sr) {
   const durationMs = 500;
   final n = sr * durationMs ~/ 1000;
@@ -113,7 +122,7 @@ Float64List generateSnare(int sr) {
   const durationMs = 200;
   final n = sr * durationMs ~/ 1000;
   final buf = Float64List(n);
-  final rng = math.Random(42);
+  final rng = math.Random(_kSnareNoiseSeed);
   double phase = 0.0;
   for (int i = 0; i < n; i++) {
     final amp = dspEnv(i, n, 8.0);
@@ -127,7 +136,7 @@ Float64List generateRimShot(int sr) {
   const durationMs = 120;
   final n = sr * durationMs ~/ 1000;
   final buf = Float64List(n);
-  final rng = math.Random(99);
+  final rng = math.Random(_kRimShotNoiseSeed);
   double phase = 0.0;
   for (int i = 0; i < n; i++) {
     final amp = dspEnv(i, n, 15.0);
@@ -141,7 +150,7 @@ Float64List generateHiHatClosed(int sr) {
   const durationMs = 80;
   final n = sr * durationMs ~/ 1000;
   final buf = Float64List(n);
-  final rng = math.Random(7);
+  final rng = math.Random(_kHiHatClosedNoiseSeed);
   double prev = 0.0;
   double lastNoise = 0.0;
   for (int i = 0; i < n; i++) {
@@ -159,7 +168,7 @@ Float64List generateHiHatOpen(int sr) {
   const durationMs = 600;
   final n = sr * durationMs ~/ 1000;
   final buf = Float64List(n);
-  final rng = math.Random(13);
+  final rng = math.Random(_kHiHatOpenNoiseSeed);
   double prev = 0.0;
   double lastNoise = 0.0;
   for (int i = 0; i < n; i++) {
@@ -177,7 +186,7 @@ Float64List generateClap(int sr) {
   const durationMs = 220;
   final n = sr * durationMs ~/ 1000;
   final buf = Float64List(n);
-  final rng = math.Random(55);
+  final rng = math.Random(_kClapNoiseSeed);
   for (int burst = 0; burst < 3; burst++) {
     final offset = sr * burst * 10 ~/ 1000;
     final burstLen = sr * 14 ~/ 1000;

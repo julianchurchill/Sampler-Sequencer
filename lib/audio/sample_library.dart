@@ -6,9 +6,12 @@ import 'package:path/path.dart' as p;
 import 'package:path_provider/path_provider.dart';
 
 class SampleEntry {
-  SampleEntry({required this.path, required this.name});
-  String path;
-  String name;
+  const SampleEntry({required this.path, required this.name});
+  final String path;
+  final String name;
+
+  SampleEntry copyWith({String? name}) =>
+      SampleEntry(path: path, name: name ?? this.name);
 }
 
 /// Persists user recordings to {documentsDir}/sampler_library/.
@@ -62,6 +65,8 @@ class SampleLibrary extends ChangeNotifier {
           debugPrint('SampleLibrary: index.json root is not a list, skipping');
           return;
         }
+        // Collect path-safe candidates first, then check existence in parallel.
+        final candidates = <SampleEntry>[];
         for (final item in decoded) {
           if (item is! Map<String, dynamic>) continue;
           final rawPath = item['path'];
@@ -71,9 +76,13 @@ class SampleLibrary extends ChangeNotifier {
             debugPrint('SampleLibrary: rejected path outside library: $rawPath');
             continue;
           }
-          if (await File(rawPath).exists()) {
-            _samples.add(SampleEntry(path: rawPath, name: rawName));
-          }
+          candidates.add(SampleEntry(path: rawPath, name: rawName));
+        }
+        final existsResults = await Future.wait(
+          candidates.map((e) => File(e.path).exists()),
+        );
+        for (int i = 0; i < candidates.length; i++) {
+          if (existsResults[i]) _samples.add(candidates[i]);
         }
         return;
       } catch (e) {
@@ -130,7 +139,9 @@ class SampleLibrary extends ChangeNotifier {
 
   /// Rename a library entry. Updates the index; does not rename the file.
   Future<void> rename(SampleEntry entry, String newName) async {
-    entry.name = newName;
+    final idx = _samples.indexOf(entry);
+    if (idx == -1) return;
+    _samples[idx] = entry.copyWith(name: newName);
     await _saveIndex();
     notifyListeners();
   }

@@ -508,7 +508,7 @@ class _SoundPickerSheetState extends State<_SoundPickerSheet> {
                 entry: entry,
                 color: color,
                 onLoad: () {
-                  model.loadCustomSample2(widget.trackIndex, entry.path, entry.name);
+                  model.loadLibrarySample(widget.trackIndex, entry.path, entry.name);
                   Navigator.pop(context);
                 },
                 onRename: () => _promptRename(context, entry),

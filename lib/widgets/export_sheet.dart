@@ -60,7 +60,7 @@ class _ExportSheetState extends State<ExportSheet> {
       if (mounted) {
         setState(() => _exporting = false);
         ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(content: Text('Export failed: $e')),
+          const SnackBar(content: Text('Export failed. Please try again.')),
         );
       }
     }

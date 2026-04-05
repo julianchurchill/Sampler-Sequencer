@@ -1,4 +1,5 @@
 import 'dart:async';
+import 'dart:io';
 
 import 'package:file_picker/file_picker.dart';
 import 'package:flutter/foundation.dart';
@@ -94,7 +95,13 @@ class SequencerModel extends ChangeNotifier {
     }
 
     final prefs = await SharedPreferences.getInstance();
+    await _restoreStepsAndBpm(prefs);
+    await _restoreTrackState(prefs);
+    notifyListeners();
+  }
 
+  /// Restore step grid and BPM from [prefs].
+  Future<void> _restoreStepsAndBpm(SharedPreferences prefs) async {
     // Steps
     final stepsStr = prefs.getString(_kPrefsSteps);
     if (stepsStr != null) {
@@ -111,11 +118,15 @@ class SequencerModel extends ChangeNotifier {
     if (savedBpm != null) {
       _bpm = savedBpm.clamp(kMinBpm, kMaxBpm);
     }
+  }
 
-    // Track sample selections and volumes
+  /// Restore per-track sample selection, volume, trim, mute, and velocity from [prefs].
+  Future<void> _restoreTrackState(SharedPreferences prefs) async {
     for (int t = 0; t < kNumTracks; t++) {
       final customPath = prefs.getString('$_kPrefsTrackCustomPath$t');
-      if (customPath != null) {
+      // Guard against stale paths that no longer exist on disk (e.g. after
+      // app re-install or the user deleting the file externally).
+      if (customPath != null && await File(customPath).exists()) {
         final customName = prefs.getString('$_kPrefsTrackCustomName$t') ?? customPath.split('/').last;
         await _audio.setCustomPathWithName(t, customPath, customName);
       } else {
@@ -147,8 +158,6 @@ class SequencerModel extends ChangeNotifier {
         }
       }
     }
-
-    notifyListeners();
   }
 
   void _save() {
@@ -244,8 +253,8 @@ class SequencerModel extends ChangeNotifier {
     }
   }
 
-  /// Load a library sample with a known [path] and display [name].
-  void loadCustomSample2(int track, String path, String name) {
+  /// Load a sample from the in-app library with a known [path] and display [name].
+  void loadLibrarySample(int track, String path, String name) {
     _audio.setCustomPathWithName(track, path, name);
     notifyListeners();
     _save();

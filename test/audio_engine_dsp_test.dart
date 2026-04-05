@@ -114,12 +114,13 @@ void main() {
           reason: 'Envelope with decayRate=4.0 should decay to near zero by i=totalSamples');
     });
 
-    test('is strictly monotonically decreasing over its range', () {
-      for (int i = 1; i < 50; i++) {
+    test('is strictly monotonically decreasing over its full range', () {
+      for (int i = 1; i < 100; i++) {
         final prev = dspEnv(i - 1, 100, 4.0);
         final curr = dspEnv(i, 100, 4.0);
         expect(curr, lessThan(prev),
-            reason: 'dspEnv($i) = $curr should be less than dspEnv(${i - 1}) = $prev — envelope must decay monotonically');
+            reason: 'dspEnv($i) = $curr should be less than dspEnv(${i - 1}) = $prev — '
+                'envelope must decay monotonically at every sample (i=$i)');
       }
     });
   });
@@ -209,6 +210,66 @@ void main() {
           reason: 'generateKick808 peak amplitude $peak is below 0.3 — the kick '
               'would be inaudible in a mix. Do not reduce the amplitude multiplier '
               'below ~0.72.');
+    });
+
+    test('generateRimShot produces the expected number of samples (120 ms)', () {
+      final buf = generateRimShot(_kSampleRate);
+      const expected = _kSampleRate * 120 ~/ 1000;
+      expect(buf.length, expected,
+          reason: 'Rim Shot is 120 ms — expected $expected samples at $_kSampleRate Hz, got ${buf.length}');
+    });
+
+    test('generateRimShot all samples are within the normalised range [-1.0, 1.0]', () {
+      final buf = generateRimShot(_kSampleRate);
+      for (int i = 0; i < buf.length; i++) {
+        expect(buf[i], inInclusiveRange(-1.0, 1.0),
+            reason: 'generateRimShot: sample[$i] = ${buf[i]} is outside [-1.0, 1.0] — would clip when converting to 16-bit PCM');
+      }
+    });
+
+    test('generateHiHatOpen produces the expected number of samples (600 ms)', () {
+      final buf = generateHiHatOpen(_kSampleRate);
+      const expected = _kSampleRate * 600 ~/ 1000;
+      expect(buf.length, expected,
+          reason: 'HH Open is 600 ms — expected $expected samples at $_kSampleRate Hz, got ${buf.length}');
+    });
+
+    test('generateHiHatOpen all samples are within the normalised range [-1.0, 1.0]', () {
+      final buf = generateHiHatOpen(_kSampleRate);
+      for (int i = 0; i < buf.length; i++) {
+        expect(buf[i], inInclusiveRange(-1.0, 1.0),
+            reason: 'generateHiHatOpen: sample[$i] = ${buf[i]} is outside [-1.0, 1.0] — would clip when converting to 16-bit PCM');
+      }
+    });
+
+    test('generateClap produces the expected number of samples (220 ms)', () {
+      final buf = generateClap(_kSampleRate);
+      const expected = _kSampleRate * 220 ~/ 1000;
+      expect(buf.length, expected,
+          reason: 'Clap is 220 ms — expected $expected samples at $_kSampleRate Hz, got ${buf.length}');
+    });
+
+    test('generateClap all samples are within the normalised range [-1.0, 1.0]', () {
+      final buf = generateClap(_kSampleRate);
+      for (int i = 0; i < buf.length; i++) {
+        expect(buf[i], inInclusiveRange(-1.0, 1.0),
+            reason: 'generateClap: sample[$i] = ${buf[i]} is outside [-1.0, 1.0] — would clip when converting to 16-bit PCM');
+      }
+    });
+
+    test('generateTom produces the expected number of samples (400 ms)', () {
+      final buf = generateTom(_kSampleRate);
+      const expected = _kSampleRate * 400 ~/ 1000;
+      expect(buf.length, expected,
+          reason: 'Tom is 400 ms — expected $expected samples at $_kSampleRate Hz, got ${buf.length}');
+    });
+
+    test('generateTom all samples are within the normalised range [-1.0, 1.0]', () {
+      final buf = generateTom(_kSampleRate);
+      for (int i = 0; i < buf.length; i++) {
+        expect(buf[i], inInclusiveRange(-1.0, 1.0),
+            reason: 'generateTom: sample[$i] = ${buf[i]} is outside [-1.0, 1.0] — would clip when converting to 16-bit PCM');
+      }
     });
   });
 }
