@@ -3,6 +3,8 @@ import 'dart:typed_data';
 
 import 'package:flutter/foundation.dart';
 
+import '../constants.dart';
+
 /// Decoded PCM data from a WAV file.
 class WavData {
   WavData({
@@ -209,8 +211,8 @@ class AudioExporter {
     required List<int> unsupportedTracks,
     void Function(double)? onProgress,
   }) async {
-    const numTracks = 4;
-    const numSteps = 16;
+    const numTracks = kNumTracks;
+    const numSteps = kNumSteps;
 
     // ── Load WAV data for every track ───────────────────────────────────────
     final trackData = List<WavData?>.filled(numTracks, null);

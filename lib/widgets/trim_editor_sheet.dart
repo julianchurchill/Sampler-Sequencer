@@ -79,6 +79,15 @@ class _TrimEditorSheetState extends State<TrimEditorSheet> {
     if (mounted) setState(() { _previewing = false; _playProgress = 0.0; });
   }
 
+  /// Returns the effective trim-end in milliseconds.
+  ///
+  /// If [endFrac] maps to a position before the sample end it is used as-is;
+  /// otherwise the full sample duration is used (i.e. "play to end").
+  int _effectiveEndMs(double endFrac, Duration dur) {
+    final endMs = (endFrac * dur.inMilliseconds).round();
+    return endMs < dur.inMilliseconds ? endMs : dur.inMilliseconds;
+  }
+
   Future<void> _togglePreview() async {
     final dur = _duration;
     if (dur == null) return;
@@ -93,7 +102,7 @@ class _TrimEditorSheetState extends State<TrimEditorSheet> {
     final endMs = (_endFrac * dur.inMilliseconds).round();
     final start = Duration(milliseconds: startMs);
     final end = endMs < dur.inMilliseconds ? Duration(milliseconds: endMs) : null;
-    final effectiveEndMs = end != null ? endMs : dur.inMilliseconds;
+    final effectiveEndMs = _effectiveEndMs(_endFrac, dur);
     final trimDurationMs = effectiveEndMs - startMs;
 
     setState(() { _previewing = true; _playProgress = 0.0; });
@@ -124,7 +133,7 @@ class _TrimEditorSheetState extends State<TrimEditorSheet> {
     final dur = _duration;
     if (dur == null) return;
     final startMs = (_startFrac * dur.inMilliseconds).round();
-    final endMs = (_endFrac * dur.inMilliseconds).round();
+    final endMs = _effectiveEndMs(_endFrac, dur);
     final isFullRange = startMs <= 0 && endMs >= dur.inMilliseconds;
     if (isFullRange) {
       model.clearTrim(widget.trackIndex);

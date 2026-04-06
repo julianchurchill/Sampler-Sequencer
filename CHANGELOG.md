@@ -5,6 +5,42 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [2.3.3] - 2026-04-05
+
+### Fixed
+- `SequencerModel.init()` now guards against stale custom-sample paths stored
+  in `SharedPreferences`: if a file no longer exists on disk the track falls
+  back to its preset instead of passing a bad path to `AudioEngine`.
+- `AudioEngine.getTrackDuration()` now stops the preview player before calling
+  `setSource()`, preventing a race if the player was mid-playback.
+- `AudioEngine.setTrackVolume()` applies volume to all slots in parallel
+  (`Future.wait`) instead of sequentially, removing a ~6 round-trip delay.
+- `SampleLibrary._loadIndex()` checks file existence for all index entries in
+  parallel (`Future.wait`) instead of sequentially.
+- Export error snackbar no longer leaks internal exception details to the user.
+
+### Changed
+- `SequencerModel.loadCustomSample2` renamed to `loadLibrarySample` to
+  distinguish it clearly from `loadCustomSample` (which invokes the file picker).
+- `SequencerModel.init()` refactored into two focused private helpers:
+  `_restoreStepsAndBpm` and `_restoreTrackState`.
+- `SampleEntry` fields (`path`, `name`) are now `final`; `rename()` replaces
+  the entry via `copyWith` rather than mutating in place.
+- Random seed literals in drum generators replaced with named constants
+  (`_kSnareNoiseSeed`, `_kRimShotNoiseSeed`, etc.) explaining their role.
+- `AudioEngine.initForTest` doc and assert updated to reference `kNumTracks`
+  rather than the literal `4`.
+- `AudioExporter.export` uses `kNumTracks`/`kNumSteps` constants instead of
+  the literal `4`/`16`.
+- Duplicated `effectiveEndMs` null-resolution logic in `_TrimEditorSheetState`
+  extracted into a single `_effectiveEndMs()` helper.
+
+### Tests
+- `dspEnv` monotonicity test extended from [0, 50) to the full [0, 100) range.
+- Added sample-count and amplitude-range tests for four previously uncovered
+  drum generators: `generateRimShot`, `generateHiHatOpen`, `generateClap`,
+  and `generateTom`.
+
 ## [2.3.2] - 2026-04-02
 
 ### Fixed
