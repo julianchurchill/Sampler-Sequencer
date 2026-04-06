@@ -35,9 +35,9 @@ For details and suggested fixes see `docs\quality\runs\2026-04-02\16-56\quality.
 
 ### Maintainability
 
-- [ ] **minor**: _SoundPickerSheetState is a long method / god-class concern within track_row.dart
-- [ ] **minor**: trigger() has a cyclomatic complexity of approximately 14
 - [ ] **info**: The comment at line 189 inside init() still reads 'Two low-latency SoundPool players per track (8 total).' but the code was updated to use _kSlotsPerTrack = 6 per track (24 total)
+- [x] **minor**: _SoundPickerSheetState is a long method / god-class concern within track_row.dart
+- [x] **minor**: trigger() has a cyclomatic complexity of approximately 14
 - [x] **major**: loadCustomSample2 is a poorly-named method
 - [x] **minor**: SampleEntry exposes mutable fields (String path, String name) on a public class
 - [x] **minor**: Random seed literals (42, 99, 7, 13, 55) are scattered across six drum generator functions with no named constants or comments explaining their significance
