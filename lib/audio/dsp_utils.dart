@@ -1,6 +1,8 @@
 import 'dart:math' as math;
 import 'dart:typed_data';
 
+import 'wav_io.dart';
+
 // ---------------------------------------------------------------------------
 // PCM WAV generation helpers
 // ---------------------------------------------------------------------------
@@ -20,53 +22,31 @@ const int kWavFadeSamples = 256;
 /// its natural end.
 Uint8List buildWav(Float64List samples, int sampleRate) {
   final numSamples = samples.length;
-  final dataBytes = numSamples * 2;
-  final totalBytes = 44 + dataBytes;
   final fadeSamples = kWavFadeSamples.clamp(0, numSamples ~/ 2);
 
-  final buf = ByteData(totalBytes);
-  int pos = 0;
+  // Header comes from the shared WAV I/O helper — no duplicated format knowledge.
+  final header = writeWavHeader(
+    numSamples: numSamples,
+    sampleRate: sampleRate,
+    numChannels: 1,
+  );
 
-  buf.setUint8(pos++, 0x52); // R
-  buf.setUint8(pos++, 0x49); // I
-  buf.setUint8(pos++, 0x46); // F
-  buf.setUint8(pos++, 0x46); // F
-  buf.setUint32(pos, totalBytes - 8, Endian.little); pos += 4;
-  buf.setUint8(pos++, 0x57); // W
-  buf.setUint8(pos++, 0x41); // A
-  buf.setUint8(pos++, 0x56); // V
-  buf.setUint8(pos++, 0x45); // E
+  // Allocate result and copy header in.
+  final result = Uint8List(44 + numSamples * 2);
+  result.setRange(0, 44, header);
 
-  buf.setUint8(pos++, 0x66); // f
-  buf.setUint8(pos++, 0x6D); // m
-  buf.setUint8(pos++, 0x74); // t
-  buf.setUint8(pos++, 0x20); // (space)
-  buf.setUint32(pos, 16, Endian.little); pos += 4;
-  buf.setUint16(pos, 1, Endian.little); pos += 2;  // PCM
-  buf.setUint16(pos, 1, Endian.little); pos += 2;  // mono
-  buf.setUint32(pos, sampleRate, Endian.little); pos += 4;
-  buf.setUint32(pos, sampleRate * 2, Endian.little); pos += 4;
-  buf.setUint16(pos, 2, Endian.little); pos += 2;
-  buf.setUint16(pos, 16, Endian.little); pos += 2;
-
-  buf.setUint8(pos++, 0x64); // d
-  buf.setUint8(pos++, 0x61); // a
-  buf.setUint8(pos++, 0x74); // t
-  buf.setUint8(pos++, 0x61); // a
-  buf.setUint32(pos, dataBytes, Endian.little); pos += 4;
-
+  // Write PCM samples with linear fade-in / fade-out envelope.
+  final pcmView = ByteData.sublistView(result, 44);
   for (int i = 0; i < numSamples; i++) {
     double s = samples[i];
     if (fadeSamples > 0) {
       if (i < fadeSamples) s *= i / fadeSamples;
       if (i >= numSamples - fadeSamples) s *= (numSamples - 1 - i) / fadeSamples;
     }
-    final v = (s * 32767).clamp(-32768, 32767).toInt();
-    buf.setInt16(pos, v, Endian.little);
-    pos += 2;
+    pcmView.setInt16(i * 2, (s * 32767).clamp(-32768, 32767).toInt(), Endian.little);
   }
 
-  return buf.buffer.asUint8List();
+  return result;
 }
 
 /// Exponential amplitude envelope.

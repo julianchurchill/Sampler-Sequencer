@@ -3,7 +3,7 @@ import 'dart:typed_data';
 
 import 'package:flutter_test/flutter_test.dart';
 
-import 'package:sampler_sequencer/audio/audio_exporter.dart';
+import 'package:sampler_sequencer/audio/wav_io.dart';
 import 'package:sampler_sequencer/audio/dsp_utils.dart';
 
 void main() {

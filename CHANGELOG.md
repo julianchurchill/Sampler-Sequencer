@@ -5,6 +5,19 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [2.3.4] - 2026-04-06
+
+### Changed
+- Extracted a new `lib/audio/wav_io.dart` module containing all WAV I/O
+  primitives (`WavData`, `writeWavHeader`, `pcmChunkToBytes`,
+  `writeWavChunked`, `readWav`). Both `dsp_utils.dart` and
+  `audio_exporter.dart` now import from this single source of truth,
+  removing the duplicated WAV header format knowledge that existed when
+  `AudioExporter` maintained its own private `_readWav`/`_WavData` in
+  parallel with `buildWav` in `dsp_utils.dart`.
+- `buildWav` refactored to delegate header construction to `writeWavHeader`;
+  only the fade-envelope PCM loop is specific to `buildWav`.
+
 ## [2.3.3] - 2026-04-05
 
 ### Fixed
