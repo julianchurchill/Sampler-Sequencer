@@ -48,7 +48,7 @@ For details and suggested fixes see `docs\quality\runs\2026-04-02\16-56\quality.
 
 ### Documentation
 
-- [ ] **minor**: The Architecture section's directory tree is stale
+- [x] **minor**: The Architecture section's directory tree is stale
 
 ### Reliability
 
