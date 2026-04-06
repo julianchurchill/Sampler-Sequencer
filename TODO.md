@@ -29,7 +29,7 @@ For details and suggested fixes see `docs\quality\runs\2026-04-02\16-56\quality.
 
 ### Architecture
 
-- [ ] **minor**: AudioExporter contains its own private WAV parser (_readWav, _WavData) that duplicates knowledge already present in dsp_utils.dart (buildWav)
+- [x] **minor**: AudioExporter contains its own private WAV parser (_readWav, _WavData) that duplicates knowledge already present in dsp_utils.dart (buildWav)
 - [x] **minor**: AudioExporter.export() uses hardcoded literal 4 / 16 for track/step counts instead of kNumTracks / kNumSteps
 - [x] **major**: Track count is hardcoded as the literal integer 4 in at least seven places inside AudioEngine
 
