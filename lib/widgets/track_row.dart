@@ -297,6 +297,155 @@ class _SoundPickerSheet extends StatefulWidget {
 }
 
 class _SoundPickerSheetState extends State<_SoundPickerSheet> {
+  final _renameController = TextEditingController();
+
+  @override
+  void dispose() {
+    _renameController.dispose();
+    super.dispose();
+  }
+
+  void _promptRename(BuildContext ctx, SampleEntry entry) {
+    _renameController.text = entry.name;
+    showDialog<void>(
+      context: ctx,
+      builder: (dlgCtx) => AlertDialog(
+        backgroundColor: kPanelColor,
+        title: const Text('Rename sample'),
+        content: TextField(
+          controller: _renameController,
+          autofocus: true,
+          decoration: const InputDecoration(
+            enabledBorder: UnderlineInputBorder(
+              borderSide: BorderSide(color: kTextDim),
+            ),
+          ),
+          onSubmitted: (_) => _commitRename(dlgCtx, entry),
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(dlgCtx),
+            child: const Text('CANCEL', style: TextStyle(color: kTextDim)),
+          ),
+          TextButton(
+            onPressed: () => _commitRename(dlgCtx, entry),
+            child: const Text('RENAME'),
+          ),
+        ],
+      ),
+    );
+  }
+
+  Future<void> _commitRename(BuildContext dlgCtx, SampleEntry entry) async {
+    final name = _renameController.text.trim();
+    if (name.isEmpty) return;
+    Navigator.pop(dlgCtx);
+    await context.read<SampleLibrary>().rename(entry, name);
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final color = kTrackColors[widget.trackIndex];
+    final model = context.read<SequencerModel>();
+    final library = context.watch<SampleLibrary>();
+
+    return SingleChildScrollView(
+      padding: const EdgeInsets.fromLTRB(16, 16, 16, 8),
+      child: Column(
+        mainAxisSize: MainAxisSize.min,
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          // ---- Title ----
+          Text(
+            'SELECT SOUND',
+            style: TextStyle(
+              color: color,
+              fontSize: 11,
+              fontWeight: FontWeight.w800,
+              letterSpacing: 1.5,
+            ),
+          ),
+          const SizedBox(height: 12),
+
+          // ---- Built-in presets ----
+          const _SectionLabel(label: 'PRESETS'),
+          const SizedBox(height: 8),
+          Wrap(
+            spacing: 8,
+            runSpacing: 8,
+            children: [
+              for (int i = 0; i < kDrumPresets.length; i++)
+                _PresetChip(
+                  label: kDrumPresets[i].name,
+                  color: color,
+                  onTap: () {
+                    model.loadPreset(widget.trackIndex, i);
+                    Navigator.pop(context);
+                  },
+                ),
+            ],
+          ),
+          const SizedBox(height: 16),
+
+          // ---- My samples (recording UI + library list) ----
+          const _RecordSection(),
+          const SizedBox(height: 8),
+          if (library.samples.isEmpty)
+            const Padding(
+              padding: EdgeInsets.symmetric(vertical: 4),
+              child: Text(
+                'No recordings yet. Tap ⏺ RECORD to capture a sample.',
+                style: TextStyle(color: kTextDim, fontSize: 10),
+              ),
+            )
+          else
+            for (final entry in library.samples)
+              _LibrarySampleRow(
+                entry: entry,
+                color: color,
+                onLoad: () {
+                  model.loadLibrarySample(widget.trackIndex, entry.path, entry.name);
+                  Navigator.pop(context);
+                },
+                onRename: () => _promptRename(context, entry),
+                onDelete: () => context.read<SampleLibrary>().delete(entry),
+              ),
+
+          const Divider(height: 24, color: Color(0xFF2A2A2A)),
+
+          // ---- Browse files ----
+          TextButton.icon(
+            icon: const Icon(Icons.folder_open_outlined, size: 16),
+            label: const Text('Browse files…'),
+            style: TextButton.styleFrom(
+              foregroundColor: kTextDim,
+              padding: const EdgeInsets.symmetric(horizontal: 4),
+            ),
+            onPressed: () {
+              Navigator.pop(context);
+              model.loadCustomSample(widget.trackIndex);
+            },
+          ),
+        ],
+      ),
+    );
+  }
+}
+
+// ---------------------------------------------------------------------------
+// Recording section — owns the record/stop button, indicator, and name dialog.
+// Extracted from _SoundPickerSheetState to keep that class focused on the
+// sample list and rename concern.
+// ---------------------------------------------------------------------------
+
+class _RecordSection extends StatefulWidget {
+  const _RecordSection();
+
+  @override
+  State<_RecordSection> createState() => _RecordSectionState();
+}
+
+class _RecordSectionState extends State<_RecordSection> {
   _RecordState _recordState = _RecordState.idle;
   final _recorder = AppAudioRecorder();
   String? _tempPath;
@@ -382,156 +531,41 @@ class _SoundPickerSheetState extends State<_SoundPickerSheet> {
     _tempPath = null;
   }
 
-  void _promptRename(BuildContext ctx, SampleEntry entry) {
-    _nameController.text = entry.name;
-    showDialog<void>(
-      context: ctx,
-      builder: (dlgCtx) => AlertDialog(
-        backgroundColor: kPanelColor,
-        title: const Text('Rename sample'),
-        content: TextField(
-          controller: _nameController,
-          autofocus: true,
-          decoration: const InputDecoration(
-            enabledBorder: UnderlineInputBorder(
-              borderSide: BorderSide(color: kTextDim),
-            ),
-          ),
-          onSubmitted: (_) => _commitRename(dlgCtx, entry),
-        ),
-        actions: [
-          TextButton(
-            onPressed: () => Navigator.pop(dlgCtx),
-            child: const Text('CANCEL', style: TextStyle(color: kTextDim)),
-          ),
-          TextButton(
-            onPressed: () => _commitRename(dlgCtx, entry),
-            child: const Text('RENAME'),
-          ),
-        ],
-      ),
-    );
-  }
-
-  Future<void> _commitRename(BuildContext dlgCtx, SampleEntry entry) async {
-    final name = _nameController.text.trim();
-    if (name.isEmpty) return;
-    Navigator.pop(dlgCtx);
-    await context.read<SampleLibrary>().rename(entry, name);
-  }
-
   @override
   Widget build(BuildContext context) {
-    final color = kTrackColors[widget.trackIndex];
-    final model = context.read<SequencerModel>();
-    final library = context.watch<SampleLibrary>();
-
-    return SingleChildScrollView(
-      padding: const EdgeInsets.fromLTRB(16, 16, 16, 8),
-      child: Column(
-        mainAxisSize: MainAxisSize.min,
-        crossAxisAlignment: CrossAxisAlignment.start,
-        children: [
-          // ---- Title ----
-          Text(
-            'SELECT SOUND',
-            style: TextStyle(
-              color: color,
-              fontSize: 11,
-              fontWeight: FontWeight.w800,
-              letterSpacing: 1.5,
-            ),
-          ),
-          const SizedBox(height: 12),
-
-          // ---- Built-in presets ----
-          const _SectionLabel(label: 'PRESETS'),
-          const SizedBox(height: 8),
-          Wrap(
-            spacing: 8,
-            runSpacing: 8,
-            children: [
-              for (int i = 0; i < kDrumPresets.length; i++)
-                _PresetChip(
-                  label: kDrumPresets[i].name,
-                  color: color,
-                  onTap: () {
-                    model.loadPreset(widget.trackIndex, i);
-                    Navigator.pop(context);
-                  },
-                ),
-            ],
-          ),
-          const SizedBox(height: 16),
-
-          // ---- My samples ----
-          Row(
-            children: [
-              const Expanded(child: _SectionLabel(label: 'MY SAMPLES')),
-              if (_recordState == _RecordState.idle)
-                _SmallButton(
-                  label: '⏺  RECORD',
-                  color: const Color(0xFFEF5350),
-                  onTap: _startRecording,
-                )
-              else
-                _SmallButton(
-                  label: '⏹  STOP',
-                  color: const Color(0xFFEF5350),
-                  onTap: _stopRecording,
-                ),
-            ],
-          ),
-          if (_recordState == _RecordState.recording) ...[
-            const SizedBox(height: 6),
-            const Row(
-              children: [
-                _RecordingIndicator(),
-                SizedBox(width: 6),
-                Text('Recording…',
-                    style: TextStyle(color: Color(0xFFEF5350), fontSize: 11)),
-              ],
-            ),
+    return Column(
+      mainAxisSize: MainAxisSize.min,
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        Row(
+          children: [
+            const Expanded(child: _SectionLabel(label: 'MY SAMPLES')),
+            if (_recordState == _RecordState.idle)
+              _SmallButton(
+                label: '⏺  RECORD',
+                color: const Color(0xFFEF5350),
+                onTap: _startRecording,
+              )
+            else
+              _SmallButton(
+                label: '⏹  STOP',
+                color: const Color(0xFFEF5350),
+                onTap: _stopRecording,
+              ),
           ],
-          const SizedBox(height: 8),
-          if (library.samples.isEmpty)
-            const Padding(
-              padding: EdgeInsets.symmetric(vertical: 4),
-              child: Text(
-                'No recordings yet. Tap ⏺ RECORD to capture a sample.',
-                style: TextStyle(color: kTextDim, fontSize: 10),
-              ),
-            )
-          else
-            for (final entry in library.samples)
-              _LibrarySampleRow(
-                entry: entry,
-                color: color,
-                onLoad: () {
-                  model.loadLibrarySample(widget.trackIndex, entry.path, entry.name);
-                  Navigator.pop(context);
-                },
-                onRename: () => _promptRename(context, entry),
-                onDelete: () => context.read<SampleLibrary>().delete(entry),
-              ),
-
-          const Divider(height: 24, color: Color(0xFF2A2A2A)),
-
-          // ---- Browse files ----
-          TextButton.icon(
-            icon: const Icon(Icons.folder_open_outlined, size: 16),
-            label: const Text('Browse files…'),
-            style: TextButton.styleFrom(
-              foregroundColor: kTextDim,
-              padding: const EdgeInsets.symmetric(horizontal: 4),
-            ),
-            onPressed: () {
-              Navigator.pop(context);
-              model.loadCustomSample(widget.trackIndex);
-            },
+        ),
+        if (_recordState == _RecordState.recording) ...[
+          const SizedBox(height: 6),
+          const Row(
+            children: [
+              _RecordingIndicator(),
+              SizedBox(width: 6),
+              Text('Recording…',
+                  style: TextStyle(color: Color(0xFFEF5350), fontSize: 11)),
+            ],
           ),
         ],
-      ),
+      ],
     );
   }
 }

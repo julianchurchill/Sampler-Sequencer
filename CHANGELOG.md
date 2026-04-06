@@ -5,6 +5,18 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [2.3.5] - 2026-04-06
+
+### Changed
+- `trigger()` in `AudioEngine` split into three focused methods: `trigger()`
+  dispatches to `_triggerFast()` (ping-pong SoundPool path) or
+  `_triggerMediaPlayer()` (trimmed/mediaPlayer path), reducing cyclomatic
+  complexity from ~14 to ~6 per method.
+- `_SoundPickerSheetState` god-class broken up: recording state machine,
+  recorder lifecycle, temp-path handling, and the name-after-recording dialog
+  are extracted into a new private `_RecordSection` stateful widget, leaving
+  `_SoundPickerSheetState` responsible only for rename and the sample list.
+
 ## [2.3.4] - 2026-04-06
 
 ### Changed

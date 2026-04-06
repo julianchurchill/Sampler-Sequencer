@@ -507,15 +507,13 @@ class AudioEngine {
 
   /// Trigger a one-shot hit on [track].
   ///
-  /// **Untrimmed tracks** (lowLatency mode): ping-pong between two SoundPool
-  /// players. On each trigger the engine advances to the next slot and stops
-  /// only that slot's previous stream — from two or more triggers ago, so its
-  /// amplitude is well into the decay curve. The stream from the immediately
-  /// preceding trigger is left to play out naturally; the waveform is never
-  /// cut at peak amplitude, eliminating the retrigger click.
+  /// **Untrimmed tracks** (lowLatency mode): dispatches to [_triggerFast] —
+  /// ping-pong between SoundPool players so the waveform is never cut at peak
+  /// amplitude (no retrigger click).
   ///
-  /// **Trimmed tracks** (mediaPlayer mode): the slower stop/setSource/seek/
-  /// resume chain is unavoidable because SoundPool does not support seek().
+  /// **Trimmed tracks** (mediaPlayer mode): dispatches to [_triggerMediaPlayer]
+  /// — the slower stop/setSource/seek/resume chain is unavoidable because
+  /// SoundPool does not support seek().
   Future<void> trigger(int track, {double velocity = 1.0}) async {
     if (!_ready) return;
     if (_trackMuted[track]) return;
@@ -529,85 +527,99 @@ class AudioEngine {
       final start = _trimStart[track];
       final end = _trimEnd[track];
       final trimmed = start != Duration.zero || end != null;
-
       if (!trimmed && _playerModes[track] == PlayerMode.lowLatency) {
-        // Ping-pong fast path.
-        //
-        // Advance to the next slot. The slot we are about to use held the
-        // stream from _kSlotsPerTrack triggers ago — enough time for the
-        // sample to have decayed significantly, so stopping it now is
-        // inaudible (or near-inaudible). The OTHER slot's stream (from the
-        // most recent trigger) is left untouched and plays out naturally.
-        final slot = _nextSlot[track];
-        _nextSlot[track] = (slot + 1) % _kSlotsPerTrack;
-        final player = _players[track * _kSlotsPerTrack + slot];
-
-        // stop() nullifies the internal streamId so the next play() call
-        // creates a fresh SoundPool stream via soundPool.play(soundId, ...).
-        //
-        // Do NOT replace play(source) with setVolume()+resume() here.
-        // SoundPoolPlayer.resume() on Android checks a `prepared` flag before
-        // calling start(). stop() resets that flag, so resume() after stop()
-        // silently errors with "NotPrepared" and no new stream is ever started.
-        // play(source) calls setSource() first, which re-establishes `prepared`
-        // via the urlToPlayers cache before calling resume() — this is the only
-        // reliable way to restart a stopped SoundPool player.
-        //
-        // No generation check between stop() and play() here: each trigger
-        // uses a DIFFERENT ping-pong slot, so concurrent triggers never share
-        // a player and there is no resource conflict to guard against. A check
-        // here would silently drop kicks whenever stop() is briefly delayed
-        // (e.g. behind an in-flight setSource() from a preset change).
-        await player.stop();
-        await player.play(DeviceFileSource(path), volume: effectiveVolume);
+        await _triggerFast(track, path, effectiveVolume);
       } else {
-        // MediaPlayer path: required for trimmed playback (seek) or when a
-        // clearTrim() mode switch back to lowLatency hasn't completed yet.
-        //
-        // If a rebuild is in-flight (from _schedulePlayerModeSwitch), wait for
-        // it to finish before using the player — otherwise we risk accessing a
-        // partially-initialised AudioPlayer instance.
-        if (_pendingRebuild[track] != null) {
-          await _pendingRebuild[track];
-          if (_triggerGen[track] != gen) return;
-          _pendingRebuild[track] = null;
-        }
-        final player = _players[_primary(track)];
-        if (trimmed && _playerModes[track] != PlayerMode.mediaPlayer) {
-          await _rebuildPlayer(track, PlayerMode.mediaPlayer);
-          if (_triggerGen[track] != gen) return;
-        }
-        await player.setVolume(0.0);
-        if (_triggerGen[track] != gen) return;
-        await player.stop();
-        if (_triggerGen[track] != gen) return;
-        // Only call setSource() when the path has changed — see CLAUDE.md
-        // "Do not use play(source) in the fast trigger path". audioplayers'
-        // urlToPlayers cache leaks an entry on every setSource() call.
-        if (_primarySourcePath[track] != path) {
-          await player.setSource(DeviceFileSource(path));
-          _primarySourcePath[track] = path;
-          if (_triggerGen[track] != gen) return;
-        }
-        await player.setVolume(effectiveVolume);
-        if (_triggerGen[track] != gen) return;
-        await player.seek(trimmed ? start : Duration.zero);
-        if (_triggerGen[track] != gen) return;
-        await player.resume();
-        if (_triggerGen[track] != gen) return;
-        if (trimmed && end != null) {
-          final playDuration = end - start;
-          if (playDuration > Duration.zero) {
-            _trimTimers[track] = Timer(playDuration, () {
-              if (_triggerGen[track] == gen) {
-                _players[_primary(track)].stop();
-              }
-            });
-          }
-        }
+        await _triggerMediaPlayer(
+          track, path, effectiveVolume, gen,
+          start: start, end: end, trimmed: trimmed,
+        );
       }
     } catch (e) {
       debugPrint('AudioEngine trigger error: $e');
+    }
+  }
+
+  /// Ping-pong fast path for untrimmed, lowLatency-mode tracks.
+  ///
+  /// Advances to the next slot (round-robin). The slot we are about to reuse
+  /// held the stream from [_kSlotsPerTrack] triggers ago — well into amplitude
+  /// decay — so stopping it is inaudible. The immediately preceding slot is
+  /// left to play out naturally; the waveform is never cut at peak amplitude.
+  ///
+  /// Uses `play(source)` — do NOT replace with `setVolume()+resume()`.
+  /// `SoundPoolPlayer.resume()` checks a `prepared` flag before calling
+  /// `start()`; `stop()` resets it, so `resume()` after `stop()` silently
+  /// errors with "NotPrepared". `play(source)` calls `setSource()` first,
+  /// re-establishing `prepared` via the urlToPlayers cache — the only reliable
+  /// restart path.
+  ///
+  /// No generation check between `stop()` and `play()`: each trigger uses a
+  /// DIFFERENT ping-pong slot, so concurrent triggers never share a player.
+  Future<void> _triggerFast(
+    int track,
+    String path,
+    double effectiveVolume,
+  ) async {
+    final slot = _nextSlot[track];
+    _nextSlot[track] = (slot + 1) % _kSlotsPerTrack;
+    final player = _players[track * _kSlotsPerTrack + slot];
+    await player.stop();
+    await player.play(DeviceFileSource(path), volume: effectiveVolume);
+  }
+
+  /// MediaPlayer path for trimmed tracks or when a lowLatency→mediaPlayer
+  /// mode switch is still in-flight.
+  ///
+  /// Awaits any pending [_rebuildPlayer] before touching the player, guards
+  /// every async gap with a generation check ([gen]) to discard stale chains,
+  /// and skips [setSource] when the path hasn't changed to avoid leaking
+  /// entries into audioplayers' `urlToPlayers` cache.
+  Future<void> _triggerMediaPlayer(
+    int track,
+    String path,
+    double effectiveVolume,
+    int gen, {
+    required Duration start,
+    required Duration? end,
+    required bool trimmed,
+  }) async {
+    if (_pendingRebuild[track] != null) {
+      await _pendingRebuild[track];
+      if (_triggerGen[track] != gen) return;
+      _pendingRebuild[track] = null;
+    }
+    final player = _players[_primary(track)];
+    if (trimmed && _playerModes[track] != PlayerMode.mediaPlayer) {
+      await _rebuildPlayer(track, PlayerMode.mediaPlayer);
+      if (_triggerGen[track] != gen) return;
+    }
+    await player.setVolume(0.0);
+    if (_triggerGen[track] != gen) return;
+    await player.stop();
+    if (_triggerGen[track] != gen) return;
+    // Only call setSource() when the path has changed — audioplayers'
+    // urlToPlayers cache leaks an entry on every setSource() call.
+    if (_primarySourcePath[track] != path) {
+      await player.setSource(DeviceFileSource(path));
+      _primarySourcePath[track] = path;
+      if (_triggerGen[track] != gen) return;
+    }
+    await player.setVolume(effectiveVolume);
+    if (_triggerGen[track] != gen) return;
+    await player.seek(trimmed ? start : Duration.zero);
+    if (_triggerGen[track] != gen) return;
+    await player.resume();
+    if (_triggerGen[track] != gen) return;
+    if (trimmed && end != null) {
+      final playDuration = end - start;
+      if (playDuration > Duration.zero) {
+        _trimTimers[track] = Timer(playDuration, () {
+          if (_triggerGen[track] == gen) {
+            _players[_primary(track)].stop();
+          }
+        });
+      }
     }
   }
 
