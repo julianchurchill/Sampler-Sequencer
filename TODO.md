@@ -62,8 +62,8 @@ For details and suggested fixes see `docs\quality\runs\2026-04-02\16-56\quality.
 
 ### Performance
 
-- [ ] **minor**: _fireAndAdvance() calls notifyListeners() on every sequencer tick to update the playhead highlight
 - [ ] **info**: AudioExporter.export() runs entirely on the calling isolate (the Flutter UI isolate)
+- [x] **minor**: _fireAndAdvance() calls notifyListeners() on every sequencer tick to update the playhead highlight
 - [x] **minor**: setTrackVolume() applies the volume change sequentially across all _kSlotsPerTrack players (6 awaits in a loop)
 - [x] **major**: The entire mix buffer is allocated as a Float64List in memory before conversion
 - [x] **major**: WAV PCM samples are serialised into a ByteData buffer one Int16 at a time (O(n) individual setInt16 calls), then added to the file sink

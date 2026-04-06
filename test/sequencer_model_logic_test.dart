@@ -427,4 +427,75 @@ void main() {
           reason: '_save() failure should not prevent the BPM from being set');
     });
   });
+
+  // -------------------------------------------------------------------------
+  group('currentStepNotifier', () {
+    test('starts at -1 (no playhead when sequencer is stopped)', () {
+      expect(model.currentStepNotifier.value, -1,
+          reason: 'currentStepNotifier should be -1 before playback starts — '
+              'no step should be highlighted in the stopped state');
+    });
+
+    test('updates to the fired step when playback starts', () async {
+      when(() => audio.isReady).thenReturn(true);
+      when(() => audio.trigger(any(), velocity: any(named: 'velocity')))
+          .thenAnswer((_) async {});
+      when(() => audio.stopAll()).thenAnswer((_) async {});
+
+      await model.togglePlay();
+
+      expect(model.currentStepNotifier.value, 0,
+          reason: '_fireAndAdvance() fires step 0 immediately on play; '
+              'currentStepNotifier should reflect the step that just triggered '
+              '(0), not the next internal counter value');
+    });
+
+    test('resets to -1 when playback stops', () async {
+      when(() => audio.isReady).thenReturn(true);
+      when(() => audio.trigger(any(), velocity: any(named: 'velocity')))
+          .thenAnswer((_) async {});
+      when(() => audio.stopAll()).thenAnswer((_) async {});
+
+      await model.togglePlay(); // start
+      await model.togglePlay(); // stop
+
+      expect(model.currentStepNotifier.value, -1,
+          reason: 'currentStepNotifier should return to -1 after stop so that '
+              'no step remains highlighted in the UI when the sequencer is idle');
+    });
+
+    test('does not call notifyListeners during a tick — only currentStepNotifier updates', () async {
+      when(() => audio.isReady).thenReturn(true);
+      when(() => audio.trigger(any(), velocity: any(named: 'velocity')))
+          .thenAnswer((_) async {});
+      when(() => audio.stopAll()).thenAnswer((_) async {});
+
+      // Start playback so the model is in a playing state.
+      await model.togglePlay();
+
+      // Register a model listener AFTER play() so we don't count that notification.
+      int notifyCount = 0;
+      void modelListener() => notifyCount++;
+      model.addListener(modelListener);
+
+      // Track currentStepNotifier separately.
+      int notifierFires = 0;
+      void notifierListener() => notifierFires++;
+      model.currentStepNotifier.addListener(notifierListener);
+
+      // Simulate a tick directly via the @visibleForTesting helper.
+      model.fireAndAdvanceForTest();
+
+      expect(notifyCount, 0,
+          reason: 'A sequencer tick should NOT call notifyListeners() on the '
+              'SequencerModel — only currentStepNotifier should update, so that '
+              '62 unchanged StepButtons are not forced to re-evaluate their selectors');
+      expect(notifierFires, 1,
+          reason: 'currentStepNotifier should fire exactly once per tick to '
+              'update the two StepButtons whose isCurrent state changed');
+
+      model.removeListener(modelListener);
+      model.currentStepNotifier.removeListener(notifierListener);
+    });
+  });
 }
