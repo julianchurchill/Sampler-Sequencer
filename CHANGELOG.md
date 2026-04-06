@@ -5,6 +5,19 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [Unreleased]
+
+### Changed
+- README Architecture section updated: directory tree now includes all current
+  files (`audio_exporter.dart`, `audio_recorder.dart`, `dsp_utils.dart`,
+  `sample_library.dart`, `wav_io.dart`, `export_sheet.dart`,
+  `trim_editor_sheet.dart`, `pad_config_sheet.dart`); prose updated to describe
+  the trim/media-player path and the ping-pong retrigger pool; Summary updated
+  to mention WAV export, microphone recording, sample library, trim, velocity,
+  and persistence; Frameworks table extended with `record`, `shared_preferences`,
+  `share_plus`, `package_info_plus`, and `mocktail`; Permissions table updated
+  to include `RECORD_AUDIO`.
+
 ## [2.3.5] - 2026-04-06
 
 ### Changed
