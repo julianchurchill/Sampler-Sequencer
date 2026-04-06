@@ -57,6 +57,7 @@ class _ExportSheetState extends State<ExportSheet> {
         subject: 'Sampler Sequencer export',
       );
     } catch (e) {
+      debugPrint('ExportSheet export error: $e');
       if (mounted) {
         setState(() => _exporting = false);
         ScaffoldMessenger.of(context).showSnackBar(
