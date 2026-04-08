@@ -3,8 +3,10 @@ import 'dart:typed_data';
 
 import 'package:flutter_test/flutter_test.dart';
 
+import 'package:sampler_sequencer/audio/audio_exporter.dart';
 import 'package:sampler_sequencer/audio/wav_io.dart';
 import 'package:sampler_sequencer/audio/dsp_utils.dart';
+import 'package:sampler_sequencer/constants.dart';
 
 void main() {
   // -------------------------------------------------------------------------
@@ -308,6 +310,83 @@ void main() {
         }
         expect(maxSample, closeTo(32767, 1),
             reason: 'peak-normalized output should reach near full-scale (32767); got $maxSample');
+      } finally {
+        tempDir.deleteSync(recursive: true);
+      }
+    });
+  });
+
+  // -------------------------------------------------------------------------
+  group('AudioExporter.export() output path validation', () {
+    final _dummySteps =
+        List.generate(kNumTracks, (_) => List.filled(kNumSteps, false));
+    final _dummySamplePaths = List.filled(kNumTracks, '/tmp/nonexistent.wav');
+    final _dummyVolumes = List.filled(kNumTracks, 1.0);
+    final _dummyTrimStarts = List.filled(kNumTracks, Duration.zero);
+    final _dummyTrimEnds = List<Duration?>.filled(kNumTracks, null);
+
+    test('throws ArgumentError when outputPath contains path traversal (..)', () {
+      expect(
+        AudioExporter.export(
+          samplePaths: _dummySamplePaths,
+          volumes: _dummyVolumes,
+          trimStarts: _dummyTrimStarts,
+          trimEnds: _dummyTrimEnds,
+          steps: _dummySteps,
+          bpm: 120,
+          numLoops: 1,
+          outputPath: '/tmp/../etc/evil.wav',
+          unsupportedTracks: [],
+        ),
+        throwsA(isA<ArgumentError>()),
+        reason: 'export() must reject outputPath values containing ".." to '
+            'prevent path traversal — a caller must not be able to write '
+            'outside the intended output directory',
+      );
+    });
+
+    test('throws ArgumentError when outputPath does not end with .wav', () {
+      expect(
+        AudioExporter.export(
+          samplePaths: _dummySamplePaths,
+          volumes: _dummyVolumes,
+          trimStarts: _dummyTrimStarts,
+          trimEnds: _dummyTrimEnds,
+          steps: _dummySteps,
+          bpm: 120,
+          numLoops: 1,
+          outputPath: '/tmp/export.exe',
+          unsupportedTracks: [],
+        ),
+        throwsA(isA<ArgumentError>()),
+        reason: 'export() must reject outputPath values not ending with .wav — '
+            'the function only writes WAV data and a non-.wav extension '
+            'indicates a caller error or potential extension-confusion attack',
+      );
+    });
+
+    test('does not throw for a valid outputPath', () async {
+      final tempDir = Directory.systemTemp.createTempSync('exporter_test_');
+      final outputPath = '${tempDir.path}/export_test.wav';
+      try {
+        // All steps off, so nothing to mix — completes immediately with a
+        // near-empty WAV. The test only verifies path validation passes.
+        await expectLater(
+          AudioExporter.export(
+            samplePaths: _dummySamplePaths,
+            volumes: _dummyVolumes,
+            trimStarts: _dummyTrimStarts,
+            trimEnds: _dummyTrimEnds,
+            steps: _dummySteps,
+            bpm: 120,
+            numLoops: 1,
+            outputPath: outputPath,
+            unsupportedTracks: [],
+          ),
+          completes,
+          reason: 'export() must not throw for a valid outputPath that has a '
+              '.wav extension and no traversal components',
+        );
       } finally {
         tempDir.deleteSync(recursive: true);
       }

@@ -70,10 +70,10 @@ For details and suggested fixes see `docs\quality\runs\2026-04-02\16-56\quality.
 
 ### Security
 
-- [ ] **minor**: User-supplied file path from file picker is used directly in DeviceFileSource without sanitization
-- [ ] **minor**: Export output path is constructed from user-controlled timestamp but written without validating the parent directory
 - [ ] **info**: File extension extracted from user-provided temp path via string split without validation
 - [ ] **info**: Several dependencies use caret version ranges (e.g. ^6.0.0) which allow automatic minor/patch upgrades
+- [x] **minor**: User-supplied file path from file picker is used directly in DeviceFileSource without sanitization
+- [x] **minor**: Export output path is constructed from user-controlled timestamp but written without validating the parent directory
 - [x] **minor**: Exception details leaked to user in export error snackbar
 - [x] **minor**: Custom file path restored from SharedPreferences is used without existence or validity check
 - [x] **major**: Deserialization of untrusted JSON index file without schema validation

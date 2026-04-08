@@ -5,6 +5,18 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [2.3.7] - 2026-04-08
+
+### Fixed
+- `AudioExporter.export()` now validates `outputPath` before any I/O: throws
+  `ArgumentError` if the path contains `..` (path traversal) or does not end
+  with `.wav`. Defends against future API misuse by any caller.
+- `SequencerModel.loadCustomSample()` now validates the file-picker result:
+  rejects paths with `..` traversal components and paths whose extension is not
+  a recognised audio format (`.wav .mp3 .m4a .ogg .aac .flac .opus`). The
+  platform-level `FileType.audio` filter already limits the picker, but these
+  checks provide defence-in-depth.
+
 ## [2.3.6] - 2026-04-06
 
 ### Changed
