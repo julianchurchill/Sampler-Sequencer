@@ -5,6 +5,18 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [2.3.6] - 2026-04-06
+
+### Changed
+- `_fireAndAdvance()` no longer calls `notifyListeners()` on every sequencer
+  tick. The playhead step is now tracked via a `ValueNotifier<int>
+  currentStepNotifier` on `SequencerModel`. `StepButton` subscribes via
+  `ValueListenableBuilder`, so only the two buttons whose `isCurrent` state
+  changes (previous step → false, new step → true) rebuild per tick instead
+  of triggering all 64 `context.select` evaluations via `notifyListeners`.
+  At 300 BPM this reduces per-tick selector work from 256 evaluations/tick
+  to 2 widget rebuilds/tick.
+
 ## [Unreleased]
 
 ### Changed

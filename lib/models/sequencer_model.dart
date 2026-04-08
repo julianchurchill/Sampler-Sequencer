@@ -26,7 +26,16 @@ class SequencerModel extends ChangeNotifier {
   bool _isPlaying = false;
   bool _isLoading = false;
 
-  /// Current playhead step (0–15) shown highlighted in the UI, or -1 when stopped.
+  /// Playhead step last fired by the sequencer (0–15), or -1 when stopped.
+  ///
+  /// Exposed as a [ValueNotifier] so [StepButton] can subscribe via
+  /// [ValueListenableBuilder] and rebuild only the two buttons whose
+  /// [isCurrent] state changes on each tick — instead of broadcasting
+  /// [notifyListeners] to all 64 step buttons on every sequencer tick.
+  final ValueNotifier<int> currentStepNotifier = ValueNotifier(-1);
+
+  /// Internal counter: the step index that will fire on the NEXT tick.
+  /// Kept separate from [currentStepNotifier] which tracks the last FIRED step.
   int _currentStep = -1;
 
   /// steps[track][step] — whether that step is active.
@@ -55,7 +64,7 @@ class SequencerModel extends ChangeNotifier {
   int get bpm => _bpm;
   bool get isPlaying => _isPlaying;
   bool get isLoading => _isLoading;
-  int get currentStep => _currentStep;
+  int get currentStep => currentStepNotifier.value;
 
   bool stepEnabled(int track, int step) => _steps[track][step];
   double stepVelocity(int track, int step) => _stepVelocity[track][step];
@@ -360,6 +369,7 @@ class SequencerModel extends ChangeNotifier {
     _stepTimer = null;
     _isPlaying = false;
     _currentStep = -1;
+    currentStepNotifier.value = -1;
     _audio.stopAll();
     notifyListeners();
   }
@@ -375,13 +385,23 @@ class SequencerModel extends ChangeNotifier {
         _audio.trigger(t, velocity: _stepVelocity[t][_currentStep]);
       }
     }
-    notifyListeners();
+    // Update only the playhead notifier — NOT notifyListeners().
+    // This wakes only the two StepButtons whose isCurrent state changed
+    // (previous step → false, new step → true) via ValueListenableBuilder,
+    // instead of triggering all 64 context.select evaluations on every tick.
+    currentStepNotifier.value = _currentStep;
     _currentStep = (_currentStep + 1) % kNumSteps;
   }
+
+  /// Exposed for testing only — exercises [_fireAndAdvance] directly so tests
+  /// can verify tick behaviour without waiting for [Timer.periodic] to fire.
+  @visibleForTesting
+  void fireAndAdvanceForTest() => _fireAndAdvance();
 
   @override
   void dispose() {
     _stepTimer?.cancel();
+    currentStepNotifier.dispose();
     _audio.dispose();
     super.dispose();
   }
