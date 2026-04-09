@@ -13,6 +13,11 @@ import 'dsp_utils.dart';
 
 const int _kSampleRate = 44100;
 
+/// Increment this constant whenever any drum generator in dsp_utils.dart is
+/// changed so that stale WAV files cached from a previous app version are
+/// automatically regenerated on next launch.
+const int _kPresetCacheVersion = 1;
+
 /// Number of SoundPool player slots per sequencer track.
 ///
 /// On each trigger the engine advances to the next slot (round-robin) and
@@ -200,14 +205,31 @@ class AudioEngine {
 
   Future<void> init() async {
     if (_ready) return; // Idempotency guard — init() must only run once.
-    final tmpDir = await getTemporaryDirectory();
 
-    // Synthesise all presets to temp WAV files.
-    for (int i = 0; i < kDrumPresets.length; i++) {
-      final wavData = buildWav(kDrumPresets[i].generator(_kSampleRate), _kSampleRate);
-      final path = '${tmpDir.path}/preset_$i.wav';
-      await File(path).writeAsBytes(wavData);
-      _presetPaths.add(path);
+    // Cache synthesised presets to the application support directory so they
+    // survive across cold starts.  A version marker file records which generator
+    // version wrote the cache; on mismatch the files are regenerated.
+    final supportDir = await getApplicationSupportDirectory();
+    final cacheDir = Directory('${supportDir.path}/presets');
+    await cacheDir.create(recursive: true);
+    final versionFile = File('${cacheDir.path}/version');
+    final cachedVersion =
+        await versionFile.exists() ? await versionFile.readAsString() : null;
+
+    if (cachedVersion == '$_kPresetCacheVersion') {
+      // Cache is current — use the existing files.
+      for (int i = 0; i < kDrumPresets.length; i++) {
+        _presetPaths.add('${cacheDir.path}/preset_$i.wav');
+      }
+    } else {
+      // Cache is missing or stale — (re)synthesise all presets.
+      for (int i = 0; i < kDrumPresets.length; i++) {
+        final wavData = buildWav(kDrumPresets[i].generator(_kSampleRate), _kSampleRate);
+        final path = '${cacheDir.path}/preset_$i.wav';
+        await File(path).writeAsBytes(wavData);
+        _presetPaths.add(path);
+      }
+      await versionFile.writeAsString('$_kPresetCacheVersion');
     }
 
     // _kSlotsPerTrack (6) low-latency SoundPool players per track

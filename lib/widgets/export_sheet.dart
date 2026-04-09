@@ -17,7 +17,6 @@ class ExportSheet extends StatefulWidget {
 class _ExportSheetState extends State<ExportSheet> {
   int _numLoops = 2;
   bool _exporting = false;
-  double _progress = 0;
   List<int> _unsupportedTracks = [];
 
   static const _color = Color(0xFF66BB6A); // green accent for export
@@ -25,7 +24,6 @@ class _ExportSheetState extends State<ExportSheet> {
   Future<void> _export() async {
     setState(() {
       _exporting = true;
-      _progress = 0;
       _unsupportedTracks = [];
     });
 
@@ -33,22 +31,16 @@ class _ExportSheetState extends State<ExportSheet> {
       final tmpDir = await getTemporaryDirectory();
       final timestamp = DateTime.now().millisecondsSinceEpoch;
       final outputPath = '${tmpDir.path}/export_$timestamp.wav';
-      final unsupported = <int>[];
 
-      await context.read<SequencerModel>().exportWav(
+      final unsupported = await context.read<SequencerModel>().exportWav(
         numLoops: _numLoops,
         outputPath: outputPath,
-        unsupportedTracks: unsupported,
-        onProgress: (p) {
-          if (mounted) setState(() => _progress = p);
-        },
       );
 
       if (!mounted) return;
       setState(() {
         _unsupportedTracks = unsupported;
         _exporting = false;
-        _progress = 1;
       });
 
       // Share the file via the OS share sheet.
@@ -169,7 +161,6 @@ class _ExportSheetState extends State<ExportSheet> {
           // ── Progress bar ──────────────────────────────────────────────────
           if (_exporting) ...[
             LinearProgressIndicator(
-              value: _progress,
               backgroundColor: _color.withValues(alpha: 0.2),
               valueColor: const AlwaysStoppedAnimation(_color),
             ),

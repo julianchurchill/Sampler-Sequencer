@@ -318,25 +318,24 @@ void main() {
 
   // -------------------------------------------------------------------------
   group('AudioExporter.export() output path validation', () {
-    final _dummySteps =
+    final dummySteps =
         List.generate(kNumTracks, (_) => List.filled(kNumSteps, false));
-    final _dummySamplePaths = List.filled(kNumTracks, '/tmp/nonexistent.wav');
-    final _dummyVolumes = List.filled(kNumTracks, 1.0);
-    final _dummyTrimStarts = List.filled(kNumTracks, Duration.zero);
-    final _dummyTrimEnds = List<Duration?>.filled(kNumTracks, null);
+    final dummySamplePaths = List.filled(kNumTracks, '/tmp/nonexistent.wav');
+    final dummyVolumes = List.filled(kNumTracks, 1.0);
+    final dummyTrimStarts = List.filled(kNumTracks, Duration.zero);
+    final dummyTrimEnds = List<Duration?>.filled(kNumTracks, null);
 
     test('throws ArgumentError when outputPath contains path traversal (..)', () {
       expect(
         AudioExporter.export(
-          samplePaths: _dummySamplePaths,
-          volumes: _dummyVolumes,
-          trimStarts: _dummyTrimStarts,
-          trimEnds: _dummyTrimEnds,
-          steps: _dummySteps,
+          samplePaths: dummySamplePaths,
+          volumes: dummyVolumes,
+          trimStarts: dummyTrimStarts,
+          trimEnds: dummyTrimEnds,
+          steps: dummySteps,
           bpm: 120,
           numLoops: 1,
           outputPath: '/tmp/../etc/evil.wav',
-          unsupportedTracks: [],
         ),
         throwsA(isA<ArgumentError>()),
         reason: 'export() must reject outputPath values containing ".." to '
@@ -348,15 +347,14 @@ void main() {
     test('throws ArgumentError when outputPath does not end with .wav', () {
       expect(
         AudioExporter.export(
-          samplePaths: _dummySamplePaths,
-          volumes: _dummyVolumes,
-          trimStarts: _dummyTrimStarts,
-          trimEnds: _dummyTrimEnds,
-          steps: _dummySteps,
+          samplePaths: dummySamplePaths,
+          volumes: dummyVolumes,
+          trimStarts: dummyTrimStarts,
+          trimEnds: dummyTrimEnds,
+          steps: dummySteps,
           bpm: 120,
           numLoops: 1,
           outputPath: '/tmp/export.exe',
-          unsupportedTracks: [],
         ),
         throwsA(isA<ArgumentError>()),
         reason: 'export() must reject outputPath values not ending with .wav — '
@@ -365,28 +363,27 @@ void main() {
       );
     });
 
-    test('does not throw for a valid outputPath', () async {
+    test('does not throw for a valid outputPath and reports all nonexistent samples as unsupported', () async {
       final tempDir = Directory.systemTemp.createTempSync('exporter_test_');
       final outputPath = '${tempDir.path}/export_test.wav';
       try {
-        // All steps off, so nothing to mix — completes immediately with a
-        // near-empty WAV. The test only verifies path validation passes.
-        await expectLater(
-          AudioExporter.export(
-            samplePaths: _dummySamplePaths,
-            volumes: _dummyVolumes,
-            trimStarts: _dummyTrimStarts,
-            trimEnds: _dummyTrimEnds,
-            steps: _dummySteps,
-            bpm: 120,
-            numLoops: 1,
-            outputPath: outputPath,
-            unsupportedTracks: [],
-          ),
-          completes,
-          reason: 'export() must not throw for a valid outputPath that has a '
-              '.wav extension and no traversal components',
+        // All steps off, so nothing is mixed, but all 4 sample paths are
+        // nonexistent — export() loads every track regardless of step state,
+        // so all 4 are reported as unsupported.  The test verifies the path
+        // validation guard passes and the return value is correct.
+        final unsupported = await AudioExporter.export(
+          samplePaths: dummySamplePaths,
+          volumes: dummyVolumes,
+          trimStarts: dummyTrimStarts,
+          trimEnds: dummyTrimEnds,
+          steps: dummySteps,
+          bpm: 120,
+          numLoops: 1,
+          outputPath: outputPath,
         );
+        expect(unsupported, hasLength(kNumTracks),
+            reason: 'all $kNumTracks dummy sample paths are nonexistent, so '
+                'every track should be reported as unsupported');
       } finally {
         tempDir.deleteSync(recursive: true);
       }

@@ -53,7 +53,7 @@ For details and suggested fixes see `docs\quality\runs\2026-04-02\16-56\quality.
 
 ### Reliability
 
-- [ ] **info**: AudioEngine.init() synthesises all 9 preset WAV files and writes them to the temp directory on every cold start
+- [x] **info**: AudioEngine.init() synthesises all 9 preset WAV files and writes them to the temp directory on every cold start
 - [x] **minor**: getTrackDuration() calls _previewPlayer.setSource() without stopping or checking whether the preview player is currently playing
 - [x] **minor**: _loadIndex() calls File(path).exists() sequentially for every index entry, one await per file
 - [x] **minor**: _play() calls _audio.init() a second time as a fallback if isReady is false
@@ -63,7 +63,7 @@ For details and suggested fixes see `docs\quality\runs\2026-04-02\16-56\quality.
 
 ### Performance
 
-- [ ] **info**: AudioExporter.export() runs entirely on the calling isolate (the Flutter UI isolate)
+- [x] **info**: AudioExporter.export() runs entirely on the calling isolate (the Flutter UI isolate)
 - [x] **minor**: _fireAndAdvance() calls notifyListeners() on every sequencer tick to update the playhead highlight
 - [x] **minor**: setTrackVolume() applies the volume change sequentially across all _kSlotsPerTrack players (6 awaits in a loop)
 - [x] **major**: The entire mix buffer is allocated as a Float64List in memory before conversion
@@ -71,7 +71,7 @@ For details and suggested fixes see `docs\quality\runs\2026-04-02\16-56\quality.
 
 ### Security
 
-- [ ] **info**: Several dependencies use caret version ranges (e.g. ^6.0.0) which allow automatic minor/patch upgrades
+- [x] **info**: Several dependencies use caret version ranges (e.g. ^6.0.0) which allow automatic minor/patch upgrades
 - [x] **info**: File extension extracted from user-provided temp path via string split without validation
 - [x] **minor**: User-supplied file path from file picker is used directly in DeviceFileSource without sanitization
 - [x] **minor**: Export output path is constructed from user-controlled timestamp but written without validating the parent directory

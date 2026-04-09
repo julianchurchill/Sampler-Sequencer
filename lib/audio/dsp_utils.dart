@@ -55,6 +55,12 @@ double dspEnv(int i, int totalSamples, double decayRate) =>
 
 // ---------------------------------------------------------------------------
 // Synthesised drum generators
+//
+// IMPORTANT: if you change any generator function below, increment
+// `_kPresetCacheVersion` in lib/audio/audio_engine.dart so that the cached
+// WAV files written to the application support directory are regenerated on
+// the next cold start.  Failing to do so means users will continue to hear the
+// old sound until they clear app data.
 // ---------------------------------------------------------------------------
 
 // Deterministic seeds for noise-based drum generators.

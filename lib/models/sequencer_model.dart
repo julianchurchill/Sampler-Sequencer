@@ -315,13 +315,13 @@ class SequencerModel extends ChangeNotifier {
   Future<Duration?> getTrackDuration(int track) => _audio.getTrackDuration(track);
 
   /// Render [numLoops] loops of the current sequence to a WAV file at [outputPath].
-  /// [unsupportedTracks] is populated with track indices whose samples could not
-  /// be decoded (non-WAV files) and were silenced in the mix.
-  Future<void> exportWav({
+  ///
+  /// Returns track indices whose samples could not be decoded (non-WAV files)
+  /// and were silenced in the mix.  The heavy mixing work runs on a background
+  /// isolate so the UI thread is never blocked.
+  Future<List<int>> exportWav({
     required int numLoops,
     required String outputPath,
-    required List<int> unsupportedTracks,
-    void Function(double)? onProgress,
   }) =>
       AudioExporter.export(
         samplePaths: List.generate(kNumTracks, _audio.samplePath),
@@ -332,8 +332,6 @@ class SequencerModel extends ChangeNotifier {
         bpm: _bpm,
         numLoops: numLoops,
         outputPath: outputPath,
-        unsupportedTracks: unsupportedTracks,
-        onProgress: onProgress,
       );
   Future<void> previewTrim(int track, Duration start, Duration? end) =>
       _audio.previewTrim(track, start, end);
