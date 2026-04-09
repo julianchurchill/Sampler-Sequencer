@@ -55,10 +55,13 @@ class AudioExporter {
     required int bpm,
     required int numLoops,
     required String outputPath,
-  }) {
+  }) async {
     // Guard against path traversal and incorrect file types.  The canonical
     // caller (ExportSheet) always passes a path inside getTemporaryDirectory(),
     // but this check defends against future misuse of the API.
+    //
+    // The method is `async` so that these throws become rejected Futures,
+    // allowing callers to use `await` or `catchError` uniformly.
     if (outputPath.contains('..')) {
       throw ArgumentError.value(
         outputPath, 'outputPath',

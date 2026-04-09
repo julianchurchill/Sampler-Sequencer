@@ -363,13 +363,14 @@ void main() {
       );
     });
 
-    test('does not throw for a valid outputPath and returns empty unsupported list when all steps off', () async {
+    test('does not throw for a valid outputPath and reports all nonexistent samples as unsupported', () async {
       final tempDir = Directory.systemTemp.createTempSync('exporter_test_');
       final outputPath = '${tempDir.path}/export_test.wav';
       try {
-        // All steps off, so nothing to mix — completes immediately with a
-        // near-empty WAV. Verifies path validation passes and returns an
-        // empty unsupported-tracks list (no tracks triggered).
+        // All steps off, so nothing is mixed, but all 4 sample paths are
+        // nonexistent — export() loads every track regardless of step state,
+        // so all 4 are reported as unsupported.  The test verifies the path
+        // validation guard passes and the return value is correct.
         final unsupported = await AudioExporter.export(
           samplePaths: dummySamplePaths,
           volumes: dummyVolumes,
@@ -380,9 +381,9 @@ void main() {
           numLoops: 1,
           outputPath: outputPath,
         );
-        expect(unsupported, isEmpty,
-            reason: 'export() with no sample paths and all steps off should '
-                'return an empty unsupported-tracks list');
+        expect(unsupported, hasLength(kNumTracks),
+            reason: 'all $kNumTracks dummy sample paths are nonexistent, so '
+                'every track should be reported as unsupported');
       } finally {
         tempDir.deleteSync(recursive: true);
       }
