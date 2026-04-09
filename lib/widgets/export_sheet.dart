@@ -24,7 +24,6 @@ class _ExportSheetState extends State<ExportSheet> {
   Future<void> _export() async {
     setState(() {
       _exporting = true;
-      _progress = 0;
       _unsupportedTracks = [];
     });
 
