@@ -62,5 +62,36 @@ void main() {
       expect(kTrackColorsDim.length, kNumTracks,
           reason: 'kTrackColorsDim must have exactly kNumTracks ($kNumTracks) entries — one dim colour per track');
     });
+
+    test('kMinBpm is strictly less than kMaxBpm', () {
+      expect(kMinBpm, lessThan(kMaxBpm),
+          reason: 'kMinBpm ($kMinBpm) must be less than kMaxBpm ($kMaxBpm) — the BPM range must be valid');
+    });
+
+    test('kDefaultBpm is within the valid BPM range', () {
+      expect(kDefaultBpm, greaterThanOrEqualTo(kMinBpm),
+          reason: 'kDefaultBpm ($kDefaultBpm) must be >= kMinBpm ($kMinBpm) — otherwise the app clamps it to kMinBpm on load');
+      expect(kDefaultBpm, lessThanOrEqualTo(kMaxBpm),
+          reason: 'kDefaultBpm ($kDefaultBpm) must be <= kMaxBpm ($kMaxBpm) — otherwise the app clamps it to kMaxBpm on load');
+    });
+
+    test('kDefaultStepVelocity is within the valid velocity range [0.0, 1.0]', () {
+      expect(kDefaultStepVelocity, greaterThanOrEqualTo(0.0),
+          reason: 'kDefaultStepVelocity ($kDefaultStepVelocity) must be >= 0.0 — negative velocity has no meaning');
+      expect(kDefaultStepVelocity, lessThanOrEqualTo(1.0),
+          reason: 'kDefaultStepVelocity ($kDefaultStepVelocity) must be <= 1.0 — velocity above full volume would clip');
+    });
+
+    test('kDefaultPresetIndices has one entry per track', () {
+      expect(kDefaultPresetIndices.length, kNumTracks,
+          reason: 'kDefaultPresetIndices must have exactly kNumTracks ($kNumTracks) entries — one default preset per track');
+    });
+
+    test('all kDrumPresets have non-empty names', () {
+      for (int i = 0; i < kDrumPresets.length; i++) {
+        expect(kDrumPresets[i].name.isNotEmpty, true,
+            reason: 'kDrumPresets[$i].name is empty — every preset must have a non-empty display name');
+      }
+    });
   });
 }

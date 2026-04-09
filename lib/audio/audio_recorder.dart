@@ -1,8 +1,13 @@
 import 'package:record/record.dart';
 
 /// Thin wrapper around the `record` package AudioRecorder.
+///
+/// Accepts an optional [recorder] for dependency injection in tests.
 class AppAudioRecorder {
-  final AudioRecorder _recorder = AudioRecorder();
+  AppAudioRecorder({AudioRecorder? recorder})
+      : _recorder = recorder ?? AudioRecorder();
+
+  final AudioRecorder _recorder;
 
   Future<bool> hasPermission() => _recorder.hasPermission();
 
