@@ -66,6 +66,7 @@ Before committing any code change, perform a self-review of the diff. Work throu
 - No `async` gaps that could leave the UI in a stale state (e.g. awaiting a fire-and-forget call and treating it as complete).
 - SharedPreferences keys are unique and follow the existing `_kPrefs*` naming convention.
 - No security issues: no command injection, no untrusted input used in file paths or shell commands.
+- If any drum generator in `dsp_utils.dart` was modified, `_kPresetCacheVersion` in `audio_engine.dart` has been incremented so the on-device WAV cache is invalidated.
 
 #### AudioEngine invariants (must survive any rewrite of `init()` or `_rebuildPlayer()`)
 
