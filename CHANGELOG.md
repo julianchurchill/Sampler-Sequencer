@@ -5,6 +5,24 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [2.3.9] - 2026-04-09
+
+### Changed
+- `AudioExporter.export()` now runs on a background isolate via `compute()`,
+  keeping the Flutter UI thread fully responsive during WAV rendering. The
+  export progress bar is now indeterminate (animated) instead of showing
+  granular progress, since callbacks cannot cross isolate boundaries.
+  `export()` now returns `Future<List<int>>` (the unsupported-track indices)
+  instead of `Future<void>` + output parameter.
+- `AudioEngine.init()` now caches synthesised preset WAV files in the
+  application support directory (`getApplicationSupportDirectory()`).
+  Subsequent cold starts reuse the cached files, skipping CPU-intensive DSP
+  synthesis.  A `_kPresetCacheVersion` constant controls cache invalidation:
+  increment it whenever a drum generator in `dsp_utils.dart` is changed.
+- All direct `pubspec.yaml` dependencies are now pinned to exact resolved
+  versions (e.g. `audioplayers: 6.6.0`) instead of caret ranges (`^6.0.0`),
+  making dependency upgrades explicit and preventing unintended auto-upgrades.
+
 ## [2.3.8] - 2026-04-09
 
 ### Fixed
