@@ -29,6 +29,22 @@ class AudioExporter {
     required List<int> unsupportedTracks,
     void Function(double)? onProgress,
   }) async {
+    // Guard against path traversal and incorrect file types.  The canonical
+    // caller (ExportSheet) always passes a path inside getTemporaryDirectory(),
+    // but this check defends against future misuse of the API.
+    if (outputPath.contains('..')) {
+      throw ArgumentError.value(
+        outputPath, 'outputPath',
+        'must not contain path traversal components (..)',
+      );
+    }
+    if (!outputPath.toLowerCase().endsWith('.wav')) {
+      throw ArgumentError.value(
+        outputPath, 'outputPath',
+        'must have a .wav extension — export() only writes WAV data',
+      );
+    }
+
     const numTracks = kNumTracks;
     const numSteps = kNumSteps;
 

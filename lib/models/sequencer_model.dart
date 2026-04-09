@@ -253,6 +253,19 @@ class SequencerModel extends ChangeNotifier {
       );
       final path = result?.files.single.path;
       if (path != null) {
+        // Reject paths with traversal components and unrecognised extensions.
+        // FilePicker already filters to audio on the platform side, but these
+        // checks defend against unexpected platform behaviour or path injection.
+        if (path.contains('..')) {
+          debugPrint('SequencerModel.loadCustomSample: rejected path with traversal components');
+          return;
+        }
+        const audioExtensions = {'.wav', '.mp3', '.m4a', '.ogg', '.aac', '.flac', '.opus'};
+        final lower = path.toLowerCase();
+        if (!audioExtensions.any((ext) => lower.endsWith(ext))) {
+          debugPrint('SequencerModel.loadCustomSample: rejected path with unrecognised extension');
+          return;
+        }
         _audio.setCustomPath(track, path);
         notifyListeners();
         _save();
