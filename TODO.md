@@ -35,7 +35,7 @@ For details and suggested fixes see `docs\quality\runs\2026-04-02\16-56\quality.
 
 ### Maintainability
 
-- [ ] **info**: The comment at line 189 inside init() still reads 'Two low-latency SoundPool players per track (8 total).' but the code was updated to use _kSlotsPerTrack = 6 per track (24 total)
+- [x] **info**: The comment at line 189 inside init() still reads 'Two low-latency SoundPool players per track (8 total).' but the code was updated to use _kSlotsPerTrack = 6 per track (24 total)
 - [x] **minor**: _SoundPickerSheetState is a long method / god-class concern within track_row.dart
 - [x] **minor**: trigger() has a cyclomatic complexity of approximately 14
 - [x] **major**: loadCustomSample2 is a poorly-named method
@@ -45,6 +45,7 @@ For details and suggested fixes see `docs\quality\runs\2026-04-02\16-56\quality.
 - [x] **minor**: In _togglePreview(), the local variable effectiveEndMs is computed to resolve the null end case, but this same null-resolution logic is duplicated at line 135 in _applyTrim() (endMs < dur.inMilliseconds ? Duration(milliseconds: endMs) : null)
 - [x] **major**: positionStream(int track) accepts a track parameter but completely ignores it, always returning _previewPlayer.onPositionChanged
 - [x] **major**: _save() uses fire-and-forget SharedPreferences.getInstance().then() with no error handling
+
 
 ### Documentation
 
@@ -70,8 +71,8 @@ For details and suggested fixes see `docs\quality\runs\2026-04-02\16-56\quality.
 
 ### Security
 
-- [ ] **info**: File extension extracted from user-provided temp path via string split without validation
 - [ ] **info**: Several dependencies use caret version ranges (e.g. ^6.0.0) which allow automatic minor/patch upgrades
+- [x] **info**: File extension extracted from user-provided temp path via string split without validation
 - [x] **minor**: User-supplied file path from file picker is used directly in DeviceFileSource without sanitization
 - [x] **minor**: Export output path is constructed from user-controlled timestamp but written without validating the parent directory
 - [x] **minor**: Exception details leaked to user in export error snackbar
@@ -80,8 +81,8 @@ For details and suggested fixes see `docs\quality\runs\2026-04-02\16-56\quality.
 
 ### Testing
 
-- [ ] **info**: constants_test.dart contains only value-equality assertions (expect(k, literal))
-- [ ] **info**: AppAudioRecorder is a thin wrapper with no tests
+- [x] **info**: constants_test.dart contains only value-equality assertions (expect(k, literal))
+- [x] **info**: AppAudioRecorder is a thin wrapper with no tests
 - [x] **minor**: The 'notifies listeners and updates bpm' test adds a listener but never removes it before the test ends
 - [x] **minor**: Same listener leak as above: the 'notifies listeners and updates step state' test adds a listener without removing it
 - [x] **minor**: SequencerModel is constructed in setUp() but dispose() is never called in tearDown()

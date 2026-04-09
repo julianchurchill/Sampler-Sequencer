@@ -124,10 +124,23 @@ class SampleLibrary extends ChangeNotifier {
     }
   }
 
+  static const Set<String> _kAudioExtensions = {
+    'wav', 'm4a', 'mp3', 'ogg', 'aac', 'flac', 'opus'
+  };
+
+  /// Returns the extension from [path] (without the dot), preserving original
+  /// case, and falling back to 'm4a' for missing or unrecognised extensions.
+  static String _audioExtensionOf(String path) {
+    final lastDot = path.lastIndexOf('.');
+    if (lastDot == -1 || lastDot == path.length - 1) return 'm4a';
+    final rawExt = path.substring(lastDot + 1);
+    return _kAudioExtensions.contains(rawExt.toLowerCase()) ? rawExt : 'm4a';
+  }
+
   /// Copy a finished recording into the library with [name] as the display name.
   Future<void> addRecording(String tempPath, String name) async {
     if (_libraryDir == null) return;
-    final ext = tempPath.contains('.') ? tempPath.split('.').last : 'm4a';
+    final ext = _audioExtensionOf(tempPath);
     // Use a timestamp filename to avoid collisions regardless of display name.
     final filename = '${DateTime.now().millisecondsSinceEpoch}.$ext';
     final destPath = '${_libraryDir!.path}/$filename';

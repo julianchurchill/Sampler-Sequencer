@@ -177,6 +177,60 @@ void main() {
       expect(tempRecording.existsSync(), true,
           reason: 'addRecording should copy, not move — the original file should still exist');
     });
+
+    group('file extension extraction', () {
+      Future<String> addAndGetPath(String tempFilename) async {
+        indexFile.writeAsStringSync(jsonEncode([]));
+        final lib = SampleLibrary(libraryDir: libraryDir);
+        await lib.init();
+        final tempFile = File('${tmpDir.path}/$tempFilename');
+        tempFile.writeAsBytesSync([0xDE, 0xAD, 0xBE, 0xEF]);
+        await lib.addRecording(tempFile.path, 'Test');
+        return lib.samples[0].path;
+      }
+
+      test('preserves .wav extension from a .wav temp path', () async {
+        final dest = await addAndGetPath('rec.wav');
+        expect(dest.endsWith('.wav'), true,
+            reason: '.wav temp file should be stored with .wav extension in the library');
+      });
+
+      test('preserves .m4a extension from a .m4a temp path', () async {
+        final dest = await addAndGetPath('rec.m4a');
+        expect(dest.endsWith('.m4a'), true,
+            reason: '.m4a temp file should be stored with .m4a extension in the library');
+      });
+
+      test('preserves .mp3 extension from a .mp3 temp path', () async {
+        final dest = await addAndGetPath('rec.mp3');
+        expect(dest.endsWith('.mp3'), true,
+            reason: '.mp3 temp file should be stored with .mp3 extension in the library');
+      });
+
+      test('falls back to m4a for a path with no extension', () async {
+        final dest = await addAndGetPath('recording');
+        expect(dest.endsWith('.m4a'), true,
+            reason: 'A temp path with no extension should fall back to .m4a');
+      });
+
+      test('falls back to m4a for an unrecognised extension', () async {
+        final dest = await addAndGetPath('rec.txt');
+        expect(dest.endsWith('.m4a'), true,
+            reason: 'An unrecognised extension (.txt) should fall back to .m4a, not be preserved');
+      });
+
+      test('uses only the last extension for a path with multiple dots', () async {
+        final dest = await addAndGetPath('my.recording.2024.wav');
+        expect(dest.endsWith('.wav'), true,
+            reason: 'A path with multiple dots should use the last extension (.wav)');
+      });
+
+      test('is case-insensitive for extension matching', () async {
+        final dest = await addAndGetPath('rec.WAV');
+        expect(dest.endsWith('.WAV'), true,
+            reason: 'Extension case should be preserved but matching should be case-insensitive');
+      });
+    });
   });
 
   group('SampleLibrary.rename()', () {

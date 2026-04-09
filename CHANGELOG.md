@@ -5,6 +5,20 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [2.3.8] - 2026-04-09
+
+### Fixed
+- `SampleLibrary.addRecording()` now validates the extension extracted from the
+  recording temp path using `lastIndexOf('.')` and an allowlist of recognised
+  audio formats (`wav m4a mp3 ogg aac flac opus`). Paths with no extension or an
+  unrecognised extension fall back to `m4a` instead of forwarding an arbitrary
+  suffix into the library filename.
+
+### Changed
+- `AppAudioRecorder` accepts an optional `AudioRecorder` constructor parameter
+  for dependency injection, making it testable without a live platform audio
+  stack.
+
 ## [2.3.7] - 2026-04-08
 
 ### Fixed
