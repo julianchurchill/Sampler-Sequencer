@@ -104,15 +104,8 @@ class TransportBar extends StatelessWidget {
 
           const Spacer(),
 
-          // ---- Step count label ----
-          const Text(
-            '16 STEPS  •  4/4',
-            style: TextStyle(
-              color: kTextDim,
-              fontSize: 10,
-              letterSpacing: 1.2,
-            ),
-          ),
+          // ---- Time signature (tappable) ----
+          const _TimeSignatureDisplay(),
 
           const Spacer(),
 
@@ -152,6 +145,131 @@ class _BpmButton extends StatelessWidget {
       onTap: onTap,
       onLongPress: onLongPress,
       child: Icon(icon, color: Colors.white70, size: 20),
+    );
+  }
+}
+
+// ---------------------------------------------------------------------------
+
+/// Tappable label showing the current step count and time signature.
+/// Opens the time signature picker sheet on tap.
+class _TimeSignatureDisplay extends StatelessWidget {
+  const _TimeSignatureDisplay();
+
+  @override
+  Widget build(BuildContext context) {
+    final numSteps = context.select<SequencerModel, int>((m) => m.numSteps);
+    final timeSigLabel =
+        context.select<SequencerModel, String>((m) => m.timeSignatureLabel);
+
+    return GestureDetector(
+      onTap: () => _showPicker(context),
+      child: Column(
+        mainAxisAlignment: MainAxisAlignment.center,
+        children: [
+          Text(
+            '$numSteps STEPS  •  $timeSigLabel',
+            style: const TextStyle(
+              color: kTextDim,
+              fontSize: 10,
+              letterSpacing: 1.2,
+            ),
+          ),
+          const SizedBox(height: 2),
+          const Text(
+            'TAP TO CHANGE',
+            style: TextStyle(
+              color: Color(0xFF555555),
+              fontSize: 7,
+              letterSpacing: 1.0,
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+
+  void _showPicker(BuildContext context) {
+    showModalBottomSheet<void>(
+      context: context,
+      backgroundColor: kPanelColor,
+      shape: const RoundedRectangleBorder(
+        borderRadius: BorderRadius.vertical(top: Radius.circular(12)),
+      ),
+      builder: (sheetCtx) => ChangeNotifierProvider.value(
+        value: context.read<SequencerModel>(),
+        child: const _TimeSignaturePicker(),
+      ),
+    );
+  }
+}
+
+// ---------------------------------------------------------------------------
+
+/// Bottom sheet listing all supported time signatures for the user to choose.
+class _TimeSignaturePicker extends StatelessWidget {
+  const _TimeSignaturePicker();
+
+  static const _color = Color(0xFF64B5F6); // blue accent for time sig
+
+  @override
+  Widget build(BuildContext context) {
+    final currentNumerator = context.select<SequencerModel, int>(
+      (m) => m.timeSignatureNumerator,
+    );
+    final currentDenominator = context.select<SequencerModel, int>(
+      (m) => m.timeSignatureDenominator,
+    );
+    final model = context.read<SequencerModel>();
+
+    return Padding(
+      padding: const EdgeInsets.fromLTRB(16, 16, 16, 32),
+      child: Column(
+        mainAxisSize: MainAxisSize.min,
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          const Text(
+            'TIME SIGNATURE',
+            style: TextStyle(
+              color: _color,
+              fontSize: 11,
+              fontWeight: FontWeight.w800,
+              letterSpacing: 1.5,
+            ),
+          ),
+          const SizedBox(height: 16),
+          ...kSupportedTimeSignatures.map((sig) {
+            final isSelected = sig.numerator == currentNumerator &&
+                sig.denominator == currentDenominator;
+            return ListTile(
+              contentPadding: const EdgeInsets.symmetric(horizontal: 4),
+              dense: true,
+              onTap: () {
+                model.setTimeSignature(sig.numerator, sig.denominator);
+                Navigator.of(context).pop();
+              },
+              leading: Icon(
+                isSelected ? Icons.radio_button_checked : Icons.radio_button_off,
+                color: isSelected ? _color : kTextDim,
+                size: 20,
+              ),
+              title: Text(
+                sig.label,
+                style: TextStyle(
+                  color: isSelected ? Colors.white : kTextDim,
+                  fontSize: 16,
+                  fontWeight:
+                      isSelected ? FontWeight.w700 : FontWeight.normal,
+                ),
+              ),
+              subtitle: Text(
+                '${sig.numSteps} steps',
+                style: const TextStyle(color: kTextDim, fontSize: 11),
+              ),
+            );
+          }),
+        ],
+      ),
     );
   }
 }

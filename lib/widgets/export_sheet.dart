@@ -193,8 +193,8 @@ class _ExportSheetState extends State<ExportSheet> {
   }
 
   String _barDuration(BuildContext context) {
-    final bpm = context.read<SequencerModel>().bpm;
-    final secs = _numLoops * 16 * 60.0 / (bpm * kStepsPerQuarterNote);
+    final model = context.read<SequencerModel>();
+    final secs = _numLoops * model.numSteps * 60.0 / (model.bpm * kStepsPerQuarterNote);
     return secs.toStringAsFixed(1);
   }
 }

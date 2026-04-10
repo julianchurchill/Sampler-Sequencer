@@ -11,6 +11,8 @@ import '../constants.dart';
 
 const _kPrefsSteps = 'sequencer_steps';
 const _kPrefsBpm = 'sequencer_bpm';
+const _kPrefsTimeSignatureNumerator = 'time_sig_numerator';
+const _kPrefsTimeSignatureDenominator = 'time_sig_denominator';
 // Per-track keys — append track index (0–3).
 const _kPrefsTrackPreset = 'track_preset_';
 const _kPrefsTrackCustomPath = 'track_custom_path_';
@@ -25,6 +27,8 @@ class SequencerModel extends ChangeNotifier {
   int _bpm = kDefaultBpm;
   bool _isPlaying = false;
   bool _isLoading = false;
+  int _timeSignatureNumerator = kDefaultTimeSignatureNumerator;
+  int _timeSignatureDenominator = kDefaultTimeSignatureDenominator;
 
   /// Playhead step last fired by the sequencer (0–15), or -1 when stopped.
   ///
@@ -39,12 +43,15 @@ class SequencerModel extends ChangeNotifier {
   int _currentStep = -1;
 
   /// steps[track][step] — whether that step is active.
+  /// Length of each inner list matches [numSteps] and changes when the time
+  /// signature changes.
   final List<List<bool>> _steps = List.generate(
     kNumTracks,
     (_) => List.filled(kNumSteps, false),
   );
 
   /// Per-step velocity (0.0–1.0, default kDefaultStepVelocity).
+  /// Length of each inner list matches [numSteps].
   final List<List<double>> _stepVelocity = List.generate(
     kNumTracks,
     (_) => List.filled(kNumSteps, kDefaultStepVelocity),
@@ -65,6 +72,27 @@ class SequencerModel extends ChangeNotifier {
   bool get isPlaying => _isPlaying;
   bool get isLoading => _isLoading;
   int get currentStep => currentStepNotifier.value;
+
+  /// Total number of 16th-note steps in one bar for the current time signature.
+  int get numSteps => _timeSignatureNumerator * (16 ~/ _timeSignatureDenominator);
+
+  /// Steps per visual beat group in the pad grid for the current time signature.
+  int get stepsPerGroup {
+    for (final sig in kSupportedTimeSignatures) {
+      if (sig.numerator == _timeSignatureNumerator &&
+          sig.denominator == _timeSignatureDenominator) {
+        return sig.stepsPerGroup;
+      }
+    }
+    return 4; // fallback for any unsupported signature
+  }
+
+  /// Display label for the current time signature, e.g. "4/4".
+  String get timeSignatureLabel =>
+      '$_timeSignatureNumerator/$_timeSignatureDenominator';
+
+  int get timeSignatureNumerator => _timeSignatureNumerator;
+  int get timeSignatureDenominator => _timeSignatureDenominator;
 
   bool stepEnabled(int track, int step) => _steps[track][step];
   double stepVelocity(int track, int step) => _stepVelocity[track][step];
@@ -111,12 +139,26 @@ class SequencerModel extends ChangeNotifier {
 
   /// Restore step grid and BPM from [prefs].
   Future<void> _restoreStepsAndBpm(SharedPreferences prefs) async {
+    // Time signature — must be restored before steps so numSteps is correct.
+    final savedNumerator = prefs.getInt(_kPrefsTimeSignatureNumerator);
+    final savedDenominator = prefs.getInt(_kPrefsTimeSignatureDenominator);
+    if (savedNumerator != null && savedDenominator != null) {
+      final supported = kSupportedTimeSignatures.any(
+        (s) => s.numerator == savedNumerator && s.denominator == savedDenominator,
+      );
+      if (supported) {
+        _timeSignatureNumerator = savedNumerator;
+        _timeSignatureDenominator = savedDenominator;
+        _resizeStepArrays(numSteps);
+      }
+    }
+
     // Steps
     final stepsStr = prefs.getString(_kPrefsSteps);
     if (stepsStr != null) {
       final tracks = stepsStr.split('|');
       for (int t = 0; t < kNumTracks && t < tracks.length; t++) {
-        for (int s = 0; s < kNumSteps && s < tracks[t].length; s++) {
+        for (int s = 0; s < numSteps && s < tracks[t].length; s++) {
           _steps[t][s] = tracks[t][s] == '1';
         }
       }
@@ -162,7 +204,7 @@ class SequencerModel extends ChangeNotifier {
       final velStr = prefs.getString('$_kPrefsStepVelocity$t');
       if (velStr != null) {
         final parts = velStr.split(',');
-        for (int s = 0; s < kNumSteps && s < parts.length; s++) {
+        for (int s = 0; s < numSteps && s < parts.length; s++) {
           _stepVelocity[t][s] = double.tryParse(parts[s]) ?? kDefaultStepVelocity;
         }
       }
@@ -179,6 +221,10 @@ class SequencerModel extends ChangeNotifier {
 
       // BPM
       prefs.setInt(_kPrefsBpm, _bpm);
+
+      // Time signature
+      prefs.setInt(_kPrefsTimeSignatureNumerator, _timeSignatureNumerator);
+      prefs.setInt(_kPrefsTimeSignatureDenominator, _timeSignatureDenominator);
 
       // Track sample selections and volumes
       for (int t = 0; t < kNumTracks; t++) {
@@ -330,6 +376,7 @@ class SequencerModel extends ChangeNotifier {
         trimEnds: List.generate(kNumTracks, _audio.trimEnd),
         steps: _steps,
         bpm: _bpm,
+        numSteps: numSteps,
         numLoops: numLoops,
         outputPath: outputPath,
       );
@@ -347,6 +394,41 @@ class SequencerModel extends ChangeNotifier {
     }
     notifyListeners();
     _save();
+  }
+
+  /// Change the time signature.  No-op if [numerator]/[denominator] already
+  /// matches the current signature.
+  ///
+  /// Step arrays are resized: existing steps within the new length are
+  /// preserved; steps beyond the new length are discarded; new steps added
+  /// when expanding default to disabled with full velocity.
+  void setTimeSignature(int numerator, int denominator) {
+    if (_timeSignatureNumerator == numerator &&
+        _timeSignatureDenominator == denominator) {
+      return;
+    }
+    _timeSignatureNumerator = numerator;
+    _timeSignatureDenominator = denominator;
+    _resizeStepArrays(numSteps);
+    if (_currentStep >= numSteps) _currentStep = 0;
+    currentStepNotifier.value = -1;
+    notifyListeners();
+    _save();
+  }
+
+  void _resizeStepArrays(int newNumSteps) {
+    for (int t = 0; t < kNumTracks; t++) {
+      final oldSteps = _steps[t];
+      final oldVel = _stepVelocity[t];
+      _steps[t] = List.generate(
+        newNumSteps,
+        (s) => s < oldSteps.length ? oldSteps[s] : false,
+      );
+      _stepVelocity[t] = List.generate(
+        newNumSteps,
+        (s) => s < oldVel.length ? oldVel[s] : kDefaultStepVelocity,
+      );
+    }
   }
 
   // ---- Private helpers ----
@@ -401,7 +483,7 @@ class SequencerModel extends ChangeNotifier {
     // (previous step → false, new step → true) via ValueListenableBuilder,
     // instead of triggering all 64 context.select evaluations on every tick.
     currentStepNotifier.value = _currentStep;
-    _currentStep = (_currentStep + 1) % kNumSteps;
+    _currentStep = (_currentStep + 1) % numSteps;
   }
 
   /// Exposed for testing only — exercises [_fireAndAdvance] directly so tests

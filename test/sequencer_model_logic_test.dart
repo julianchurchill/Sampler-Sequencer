@@ -429,6 +429,115 @@ void main() {
   });
 
   // -------------------------------------------------------------------------
+  group('time signature', () {
+    test('numSteps defaults to 16 for the default 4/4 signature', () {
+      expect(model.numSteps, 16,
+          reason: 'Default time signature is 4/4, which has 4 × 4 = 16 sixteenth-note steps');
+    });
+
+    test('stepsPerGroup defaults to 4 for 4/4', () {
+      expect(model.stepsPerGroup, 4,
+          reason: '4/4 groups steps in sets of 4 (one beat = one quarter note = 4 sixteenth notes)');
+    });
+
+    test('setTimeSignature(3, 4) → numSteps = 12', () {
+      model.setTimeSignature(3, 4);
+      expect(model.numSteps, 12,
+          reason: '3/4 = 3 beats × 4 steps/beat = 12 sixteenth-note steps');
+    });
+
+    test('setTimeSignature(9, 8) → numSteps = 18', () {
+      model.setTimeSignature(9, 8);
+      expect(model.numSteps, 18,
+          reason: '9/8 = 9 × (16÷8) = 9 × 2 = 18 sixteenth-note steps');
+    });
+
+    test('setTimeSignature(7, 8) → stepsPerGroup = 2', () {
+      model.setTimeSignature(7, 8);
+      expect(model.stepsPerGroup, 2,
+          reason: '7/8 has irregular grouping; stepsPerGroup = 2 so each '
+              'eighth note gets its own visual group in the pad layout');
+    });
+
+    test('setTimeSignature(6, 8) → stepsPerGroup = 6', () {
+      model.setTimeSignature(6, 8);
+      expect(model.stepsPerGroup, 6,
+          reason: '6/8 compound time groups 6 steps per dotted-quarter beat '
+              '(2 groups of 3 eighth notes = 6 sixteenth notes each)');
+    });
+
+    test('setTimeSignature notifies listeners', () {
+      int notifyCount = 0;
+      void listener() => notifyCount++;
+      model.addListener(listener);
+      model.setTimeSignature(3, 4);
+      expect(notifyCount, greaterThan(0),
+          reason: 'setTimeSignature should call notifyListeners so the '
+              'pad grid and transport bar redraw with the new step count');
+      model.removeListener(listener);
+    });
+
+    test('calling setTimeSignature with the current signature is a no-op', () {
+      int notifyCount = 0;
+      void listener() => notifyCount++;
+      model.addListener(listener);
+      model.setTimeSignature(4, 4); // same as default
+      expect(notifyCount, 0,
+          reason: 'Setting the same time signature that is already active '
+              'should not notify listeners or trigger a save — no state changed');
+      model.removeListener(listener);
+    });
+
+    test('existing steps up to new numSteps are preserved when expanding', () {
+      model.toggleStep(0, 0);
+      model.toggleStep(0, 15);
+      model.setTimeSignature(9, 8); // expand from 16 to 18 steps
+      expect(model.stepEnabled(0, 0), isTrue,
+          reason: 'Step (0,0) enabled before expansion should remain '
+              'enabled at the same index after expanding to 18 steps');
+      expect(model.stepEnabled(0, 15), isTrue,
+          reason: 'Step (0,15) enabled before expansion should remain '
+              'enabled at the same index after expanding to 18 steps');
+    });
+
+    test('new steps beyond old numSteps default to disabled when expanding', () {
+      model.setTimeSignature(9, 8); // expand from 16 to 18 steps
+      expect(model.stepEnabled(0, 16), isFalse,
+          reason: 'Step (0,16) is beyond the previous 16-step length; '
+              'it should default to disabled (false)');
+      expect(model.stepEnabled(0, 17), isFalse,
+          reason: 'Step (0,17) is beyond the previous 16-step length; '
+              'it should default to disabled (false)');
+    });
+
+    test('sequencer wraps at numSteps in non-default time signature', () async {
+      when(() => audio.isReady).thenReturn(true);
+      when(() => audio.trigger(any(), velocity: any(named: 'velocity')))
+          .thenAnswer((_) async {});
+      when(() => audio.stopAll()).thenAnswer((_) async {});
+
+      model.setTimeSignature(3, 4); // 12 steps
+      await model.togglePlay(); // fires step 0, _currentStep → 1
+
+      // Fire 10 more steps: steps 1–10
+      for (int i = 0; i < 10; i++) {
+        model.fireAndAdvanceForTest();
+      }
+      // Now at step 10, fire step 11 (last in 12-step sequence)
+      model.fireAndAdvanceForTest();
+      expect(model.currentStepNotifier.value, 11,
+          reason: 'After 12 total fires in 3/4 (12 steps), the last fired '
+              'step should be 11 (index of the final step)');
+
+      // Next fire should wrap back to step 0, not step 12
+      model.fireAndAdvanceForTest();
+      expect(model.currentStepNotifier.value, 0,
+          reason: 'After wrapping past step 11, the sequencer must return '
+              'to step 0 — not step 12 (which would be kNumSteps wrapping instead)');
+    });
+  });
+
+  // -------------------------------------------------------------------------
   group('currentStepNotifier', () {
     test('starts at -1 (no playhead when sequencer is stopped)', () {
       expect(model.currentStepNotifier.value, -1,
