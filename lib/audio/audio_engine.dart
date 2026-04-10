@@ -123,6 +123,16 @@ class AudioEngine {
   /// can await it before using a partially-initialised player.
   final List<Future<void>?> _pendingRebuild = List.filled(kNumTracks, null);
 
+  /// Per-track in-flight source-reload future. Set by `_reloadSourceForTrack`
+  /// whenever a sample change is applied; cleared when the reload completes.
+  ///
+  /// `trigger()` awaits this before calling play() so that SoundPool never
+  /// receives a play request while the new sample is still being loaded.
+  /// Without this guard, SoundPool silently returns stream-id 0 and the beat
+  /// is dropped — the root cause of the non-deterministic playback bug seen
+  /// when a sample is changed on a running track.
+  final List<Future<void>?> _pendingReload = List.filled(kNumTracks, null);
+
   /// Per-track cached source path for the primary (slot 0) player.
   ///
   /// Prevents redundant `setSource()` calls in the trimmed trigger path.
@@ -326,20 +336,25 @@ class AudioEngine {
   }
 
   /// Reload all sequencer player slots for [track] with the current
-  /// [samplePath]. Returns a Future that completes when all slots have
-  /// finished loading so that [trigger] never calls soundPool.play() on a
-  /// sound that is still being loaded (which returns stream-id 0 and is
-  /// silently dropped by SoundPool).
+  /// [samplePath]. Stores the in-flight future in [_pendingReload] so that
+  /// [trigger] can await it — preventing play() from racing a SoundPool load.
   Future<void> _reloadSourceForTrack(int track) {
     if (!_ready) return Future.value();
-    return Future.wait([
+    late final Future<void> future;
+    future = Future.wait([
       for (int s = 0; s < _kSlotsPerTrack; s++)
         _players[track * _kSlotsPerTrack + s]
             .setSource(DeviceFileSource(samplePath(track)))
             .catchError((Object e) {
           debugPrint('AudioEngine source reload error on track $track slot $s: $e');
         }),
-    ]);
+    ]).whenComplete(() {
+      if (identical(_pendingReload[track], future)) {
+        _pendingReload[track] = null;
+      }
+    });
+    _pendingReload[track] = future;
+    return future;
   }
 
   // ---------------------------------------------------------------------------
@@ -542,6 +557,17 @@ class AudioEngine {
     final gen = ++_triggerGen[track];
     _trimTimers[track]?.cancel();
     _trimTimers[track] = null;
+
+    // Await any in-flight source reload so SoundPool has finished loading the
+    // new sample before we call play().  Without this guard, SoundPool silently
+    // returns stream-id 0 for every play() that races a load, dropping the
+    // beat with no error — the root cause of non-deterministic sample playback.
+    if (_pendingReload[track] != null) {
+      await _pendingReload[track];
+      // If a newer trigger arrived while we were waiting, discard this one.
+      if (_triggerGen[track] != gen) return;
+    }
+
     final path = samplePath(track);
     final effectiveVolume =
         (_trackVolume[track] * velocity.clamp(0.0, 1.0)).clamp(0.0, 1.0);

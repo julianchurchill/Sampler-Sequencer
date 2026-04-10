@@ -5,6 +5,19 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [2.3.10] - 2026-04-10
+
+### Fixed
+- Samples no longer intermittently fail to play on all steps after a track's
+  sample is changed while the sequencer is running.  The root cause was a race
+  condition: `_reloadSourceForTrack()` calls `setSource()` on all six SoundPool
+  player slots asynchronously, but `trigger()` could call `play()` before those
+  loads completed — SoundPool silently returns stream-id 0 in that case,
+  dropping the beat with no error.  `AudioEngine` now tracks each in-flight
+  reload in `_pendingReload[track]` and `trigger()` awaits it (with a
+  generation-counter guard to discard stale triggers) before dispatching to
+  the fast or mediaPlayer playback path.
+
 ## [2.3.9] - 2026-04-09
 
 ### Changed

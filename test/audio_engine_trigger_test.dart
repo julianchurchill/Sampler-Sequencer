@@ -1,3 +1,5 @@
+import 'dart:async';
+
 import 'package:audioplayers/audioplayers.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:mocktail/mocktail.dart';
@@ -183,6 +185,60 @@ void main() {
         expect(allVolumes.first, closeTo(0.5, 1e-9),
             reason: 'play() volume should equal velocity (0.5) × '
                 'track volume (1.0) = 0.5, got ${allVolumes.first}');
+      },
+    );
+
+    // -----------------------------------------------------------------------
+    test(
+      'trigger() during an in-flight source reload awaits the reload '
+      'before calling play() — regression for non-deterministic sample playback',
+      () async {
+        // Record the order in which async operations complete so we can assert
+        // that play() is never called before setSource() finishes.
+        final events = <String>[];
+
+        // Block every track-0 setSource() behind a completer to simulate the
+        // latency of SoundPool loading a new sample from disk.  Without the
+        // fix, trigger() calls play() immediately, while setSource() is still
+        // in-flight — SoundPool silently drops the hit (stream-id 0).
+        final loadCompleter = Completer<void>();
+        for (final p in track0Players) {
+          when(() => p.setSource(any())).thenAnswer((_) async {
+            await loadCompleter.future;
+            events.add('setSource_completed');
+          });
+        }
+
+        // Override play() on slot 0 (the first slot in the round-robin) to
+        // record when it is actually invoked relative to the setSource calls.
+        when(
+          () => track0Players[0].play(any(), volume: any(named: 'volume')),
+        ).thenAnswer((_) async {
+          events.add('play');
+        });
+
+        // Change the sample without awaiting — matches what loadPreset() and
+        // loadCustomSample() do in the UI today.
+        engine.setPreset(0, 1);
+
+        // Fire a trigger immediately — before any setSource() has completed.
+        final triggerFuture = engine.trigger(0);
+
+        // Release the SoundPool load barrier, then await the trigger.
+        loadCompleter.complete();
+        await triggerFuture;
+
+        // play() must appear AFTER every setSource_completed event.
+        // If play() appears first, the sample wasn't loaded yet and SoundPool
+        // would have silently dropped the hit on real hardware.
+        final playIdx = events.indexOf('play');
+        final lastSetSourceIdx = events.lastIndexOf('setSource_completed');
+
+        expect(playIdx, greaterThan(lastSetSourceIdx),
+            reason: 'play() must not fire until all '
+                '${AudioEngine.slotsPerTrack} setSource() calls for the new '
+                'sample have completed.  events=$events  '
+                'playIdx=$playIdx  lastSetSourceIdx=$lastSetSourceIdx');
       },
     );
   });

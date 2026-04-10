@@ -2,7 +2,7 @@
 
 ## Bugs
 
-- [ ] if the sample is changed on a track then it doesn't always play on all steps, it is very non-deterministic
+- [x] if the sample is changed on a track then it doesn't always play on all steps, it is very non-deterministic
 
 ## General
 
