@@ -338,23 +338,47 @@ class AudioEngine {
   /// Reload all sequencer player slots for [track] with the current
   /// [samplePath]. Stores the in-flight future in [_pendingReload] so that
   /// [trigger] can await it — preventing play() from racing a SoundPool load.
+  ///
+  /// Slot 0 is loaded first (sequentially). Slots 1–[_kSlotsPerTrack-1] are
+  /// then loaded in parallel. This ordering is critical for SoundPool
+  /// correctness: when slots 1–N call Android's `urlSource` setter they copy
+  /// `soundId` from the first player already in `urlToPlayers` (slot 0). If
+  /// all slots were loaded in parallel, slots 1–N would race to read slot 0's
+  /// `soundId` before Android's async `soundPool.load()` coroutine had posted
+  /// back to the main thread, finding it null — so `SoundPoolPlayer.start()`
+  /// would silently skip `soundPool.play()`, dropping every trigger that landed
+  /// on those slots.  The observable symptom: roughly 3 out of 16 steps play
+  /// after any sample change (one per 6-slot round-robin cycle, only slot 0).
   Future<void> _reloadSourceForTrack(int track) {
     if (!_ready) return Future.value();
     late final Future<void> future;
-    future = Future.wait([
-      for (int s = 0; s < _kSlotsPerTrack; s++)
-        _players[track * _kSlotsPerTrack + s]
-            .setSource(DeviceFileSource(samplePath(track)))
-            .catchError((Object e) {
-          debugPrint('AudioEngine source reload error on track $track slot $s: $e');
-        }),
-    ]).whenComplete(() {
+    future = _loadSlotsSequential(track).whenComplete(() {
       if (identical(_pendingReload[track], future)) {
         _pendingReload[track] = null;
       }
     });
     _pendingReload[track] = future;
     return future;
+  }
+
+  /// Load slot 0 for [track] first, then slots 1–[_kSlotsPerTrack-1] in
+  /// parallel.  See [_reloadSourceForTrack] for why the ordering matters.
+  Future<void> _loadSlotsSequential(int track) async {
+    final source = DeviceFileSource(samplePath(track));
+    await _players[track * _kSlotsPerTrack]
+        .setSource(source)
+        .catchError((Object e) {
+      debugPrint('AudioEngine source reload error on track $track slot 0: $e');
+    });
+    await Future.wait([
+      for (int s = 1; s < _kSlotsPerTrack; s++)
+        _players[track * _kSlotsPerTrack + s]
+            .setSource(source)
+            .catchError((Object e) {
+          debugPrint(
+              'AudioEngine source reload error on track $track slot $s: $e');
+        }),
+    ]);
   }
 
   // ---------------------------------------------------------------------------

@@ -190,6 +190,59 @@ void main() {
 
     // -----------------------------------------------------------------------
     test(
+      'sample reload loads slot 0 before slot 1 starts — '
+      'prevents soundId null race on Android SoundPool',
+      () async {
+        // Root-cause regression: when _reloadSourceForTrack() ran all slots in
+        // parallel, slots 1-5 read slot 0's soundId from Android's urlToPlayers
+        // before the async soundPool.load() coroutine had posted it back to the
+        // main thread.  They copied null, so SoundPoolPlayer.start() skipped
+        // soundPool.play() silently — only triggers landing on slot 0 produced
+        // sound (~3 of 16 steps at 120 BPM).  The fix loads slot 0 first
+        // (sequential await), then slots 1-N in parallel.
+        final events = <String>[];
+        final slot0Completer = Completer<void>();
+
+        // Slot 0: blocks until explicitly released (simulates SoundPool's async
+        // soundPool.load() posting back to the Android main thread).
+        when(() => track0Players[0].setSource(any())).thenAnswer((_) async {
+          events.add('slot0_started');
+          await slot0Completer.future;
+          events.add('slot0_completed');
+        });
+
+        // Slot 1: records when its setSource begins.
+        when(() => track0Players[1].setSource(any())).thenAnswer((_) async {
+          events.add('slot1_started');
+        });
+
+        // Fire a sample change without awaiting — mirrors the UI behaviour.
+        engine.setPreset(0, 1);
+
+        // Without yielding to the event loop, slot 0 has started (the mock
+        // body ran synchronously up to its first await), but slot 1 must NOT
+        // have started yet: the reload must await slot 0 before launching any
+        // subsequent slot.
+        expect(events, equals(['slot0_started']),
+            reason: 'Only slot 0 should have started at this point. '
+                'If slot 1 is already in events, the reload is parallel — '
+                'that is the race that leaves slots 1-5 with a null soundId '
+                'on Android, causing ~3/16 steps to fire silently. '
+                'events=$events');
+
+        // Release slot 0, then let the Dart event loop process continuations.
+        slot0Completer.complete();
+        await Future<void>.delayed(Duration.zero);
+
+        expect(events.indexOf('slot0_completed'),
+            lessThan(events.indexOf('slot1_started')),
+            reason: 'slot 0 must fully complete before slot 1 starts. '
+                'events=$events');
+      },
+    );
+
+    // -----------------------------------------------------------------------
+    test(
       'trigger() during an in-flight source reload awaits the reload '
       'before calling play() — regression for non-deterministic sample playback',
       () async {
