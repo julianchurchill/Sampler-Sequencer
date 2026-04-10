@@ -94,9 +94,14 @@ class SequencerModel extends ChangeNotifier {
   int get timeSignatureNumerator => _timeSignatureNumerator;
   int get timeSignatureDenominator => _timeSignatureDenominator;
 
-  bool stepEnabled(int track, int step) => _steps[track][step];
-  double stepVelocity(int track, int step) => _stepVelocity[track][step];
+  bool stepEnabled(int track, int step) =>
+      step < _steps[track].length && _steps[track][step];
+  double stepVelocity(int track, int step) =>
+      step < _stepVelocity[track].length
+          ? _stepVelocity[track][step]
+          : kDefaultStepVelocity;
   bool hasNonDefaultStepSettings(int track, int step) =>
+      step < _stepVelocity[track].length &&
       _stepVelocity[track][step] != kDefaultStepVelocity;
   bool hasCustomSample(int track) => _audio.hasCustomPath(track);
   String trackName(int track) => _audio.trackName(track);

@@ -193,13 +193,13 @@ class _TimeSignatureDisplay extends StatelessWidget {
     showModalBottomSheet<void>(
       context: context,
       backgroundColor: kPanelColor,
+      isScrollControlled: true,
       shape: const RoundedRectangleBorder(
         borderRadius: BorderRadius.vertical(top: Radius.circular(12)),
       ),
-      builder: (sheetCtx) => ChangeNotifierProvider.value(
-        value: context.read<SequencerModel>(),
-        child: const _TimeSignaturePicker(),
-      ),
+      // No ChangeNotifierProvider.value needed — SequencerModel is already
+      // accessible from the app-level MultiProvider above the Navigator.
+      builder: (_) => const _TimeSignaturePicker(),
     );
   }
 }
@@ -222,52 +222,72 @@ class _TimeSignaturePicker extends StatelessWidget {
     );
     final model = context.read<SequencerModel>();
 
-    return Padding(
-      padding: const EdgeInsets.fromLTRB(16, 16, 16, 32),
+    // ConstrainedBox limits the sheet to 65 % of screen height so it never
+    // covers the full display.  Column + Flexible + ListView gives a header
+    // that is always visible, with the list scrollable if it overflows.
+    return ConstrainedBox(
+      constraints: BoxConstraints(
+        maxHeight: MediaQuery.sizeOf(context).height * 0.65,
+      ),
       child: Column(
-        mainAxisSize: MainAxisSize.min,
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
-          const Text(
-            'TIME SIGNATURE',
-            style: TextStyle(
-              color: _color,
-              fontSize: 11,
-              fontWeight: FontWeight.w800,
-              letterSpacing: 1.5,
+          const Padding(
+            padding: EdgeInsets.fromLTRB(16, 16, 16, 0),
+            child: Text(
+              'TIME SIGNATURE',
+              style: TextStyle(
+                color: _color,
+                fontSize: 11,
+                fontWeight: FontWeight.w800,
+                letterSpacing: 1.5,
+              ),
             ),
           ),
-          const SizedBox(height: 16),
-          ...kSupportedTimeSignatures.map((sig) {
-            final isSelected = sig.numerator == currentNumerator &&
-                sig.denominator == currentDenominator;
-            return ListTile(
-              contentPadding: const EdgeInsets.symmetric(horizontal: 4),
-              dense: true,
-              onTap: () {
-                model.setTimeSignature(sig.numerator, sig.denominator);
-                Navigator.of(context).pop();
-              },
-              leading: Icon(
-                isSelected ? Icons.radio_button_checked : Icons.radio_button_off,
-                color: isSelected ? _color : kTextDim,
-                size: 20,
-              ),
-              title: Text(
-                sig.label,
-                style: TextStyle(
-                  color: isSelected ? Colors.white : kTextDim,
-                  fontSize: 16,
-                  fontWeight:
-                      isSelected ? FontWeight.w700 : FontWeight.normal,
-                ),
-              ),
-              subtitle: Text(
-                '${sig.numSteps} steps',
-                style: const TextStyle(color: kTextDim, fontSize: 11),
-              ),
-            );
-          }),
+          const SizedBox(height: 8),
+          Expanded(
+            child: ListView(
+              padding: const EdgeInsets.fromLTRB(0, 0, 0, 32),
+              children: kSupportedTimeSignatures.map((sig) {
+                final isSelected = sig.numerator == currentNumerator &&
+                    sig.denominator == currentDenominator;
+                return ListTile(
+                  contentPadding:
+                      const EdgeInsets.symmetric(horizontal: 16),
+                  dense: true,
+                  onTap: () {
+                    // Pop first so the picker's BuildContext is no longer
+                    // live when notifyListeners() fires — avoids a
+                    // duplicate-provider rebuild race on the modal route.
+                    Navigator.of(context).pop();
+                    model.setTimeSignature(sig.numerator, sig.denominator);
+                  },
+                  leading: Icon(
+                    isSelected
+                        ? Icons.radio_button_checked
+                        : Icons.radio_button_off,
+                    color: isSelected ? _color : kTextDim,
+                    size: 20,
+                  ),
+                  title: Text(
+                    sig.label,
+                    style: TextStyle(
+                      color: isSelected ? Colors.white : kTextDim,
+                      fontSize: 16,
+                      fontWeight: isSelected
+                          ? FontWeight.w700
+                          : FontWeight.normal,
+                    ),
+                  ),
+                  subtitle: Text(
+                    '${sig.numSteps} steps',
+                    style:
+                        const TextStyle(color: kTextDim, fontSize: 11),
+                  ),
+                );
+              }).toList(),
+            ),
+          ),
         ],
       ),
     );
