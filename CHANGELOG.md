@@ -5,6 +5,30 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [2.3.11] - 2026-04-10
+
+### Fixed
+- All 16 steps now fire after a sample is changed on a track.  The previous
+  fix (2.3.10) addressed the trigger/reload ordering but missed the deeper root
+  cause: `_reloadSourceForTrack()` was launching `setSource()` on all six
+  SoundPool slots in parallel.  On Android, each slot's `urlSource` setter
+  copies `soundId` from the first player already in `urlToPlayers` (slot 0).
+  When all six slots raced in parallel, slots 1–5 read slot 0's `soundId`
+  before the async `soundPool.load()` coroutine had posted it back to the main
+  thread — finding null — so `SoundPoolPlayer.start()` silently skipped
+  `soundPool.play()`.  The observable symptom was approximately 3 out of 16
+  steps firing (one per 6-slot round-robin cycle, only slot 0 had a valid
+  soundId).  `_reloadSourceForTrack()` now awaits slot 0 before starting slots
+  1–5 in parallel, ensuring a valid `soundId` is always present when subsequent
+  slots copy it.
+
+## [2.3.10] - 2026-04-10
+
+### Fixed
+- Added `_pendingReload[track]` tracking so `trigger()` awaits any in-flight
+  source reload (with a generation-counter guard) before dispatching to the
+  fast or mediaPlayer playback path.
+
 ## [2.3.9] - 2026-04-09
 
 ### Changed
