@@ -334,6 +334,7 @@ void main() {
           trimEnds: dummyTrimEnds,
           steps: dummySteps,
           bpm: 120,
+          numSteps: kNumSteps,
           numLoops: 1,
           outputPath: '/tmp/../etc/evil.wav',
         ),
@@ -353,6 +354,7 @@ void main() {
           trimEnds: dummyTrimEnds,
           steps: dummySteps,
           bpm: 120,
+          numSteps: kNumSteps,
           numLoops: 1,
           outputPath: '/tmp/export.exe',
         ),
@@ -378,6 +380,7 @@ void main() {
           trimEnds: dummyTrimEnds,
           steps: dummySteps,
           bpm: 120,
+          numSteps: kNumSteps,
           numLoops: 1,
           outputPath: outputPath,
         );

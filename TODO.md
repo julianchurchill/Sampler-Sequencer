@@ -6,6 +6,7 @@
 
 ## General
 
+- [ ] custom time signatures e.g. 9/8. User can change by tapping the time signature in the transport bar; pad layout reflects the new signature
 - [ ] normalise sample automatically after recording
 
 ## UI

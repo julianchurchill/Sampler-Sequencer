@@ -18,6 +18,7 @@ class _ExportParams {
     required this.trimEnds,
     required this.steps,
     required this.bpm,
+    required this.numSteps,
     required this.numLoops,
     required this.outputPath,
   });
@@ -28,6 +29,7 @@ class _ExportParams {
   final List<Duration?> trimEnds;
   final List<List<bool>> steps;
   final int bpm;
+  final int numSteps;
   final int numLoops;
   final String outputPath;
 }
@@ -53,6 +55,7 @@ class AudioExporter {
     required List<Duration?> trimEnds,
     required List<List<bool>> steps,
     required int bpm,
+    required int numSteps,
     required int numLoops,
     required String outputPath,
   }) async {
@@ -82,6 +85,7 @@ class AudioExporter {
       trimEnds: trimEnds,
       steps: steps,
       bpm: bpm,
+      numSteps: numSteps,
       numLoops: numLoops,
       outputPath: outputPath,
     ));
@@ -107,7 +111,7 @@ Future<List<int>> _runExport(_ExportParams p) async {
 
   // ── Compute timeline ────────────────────────────────────────────────────
   final stepFrames = (_kSampleRate * 60.0 / (p.bpm * _kStepsPerQuarterNote)).round();
-  final totalSteps = p.numLoops * kNumSteps;
+  final totalSteps = p.numLoops * p.numSteps;
 
   // Determine output length: last trigger end + longest tail.
   int outputFrames = totalSteps * stepFrames;
@@ -120,7 +124,7 @@ Future<List<int>> _runExport(_ExportParams p) async {
         : wav.numFrames;
     final sampleLen = (trimEndF - trimStartF).clamp(0, wav.numFrames);
     for (int step = totalSteps - 1; step >= 0; step--) {
-      if (p.steps[t][step % kNumSteps]) {
+      if (p.steps[t][step % p.numSteps]) {
         final tail = step * stepFrames + sampleLen;
         if (tail > outputFrames) outputFrames = tail;
         break;
@@ -143,7 +147,7 @@ Future<List<int>> _runExport(_ExportParams p) async {
         : wav.numFrames;
 
     for (int step = 0; step < totalSteps; step++) {
-      if (p.steps[t][step % kNumSteps]) {
+      if (p.steps[t][step % p.numSteps]) {
         final offset = step * stepFrames;
         for (int frame = trimStartF; frame < trimEndF; frame++) {
           final outFrame = offset + (frame - trimStartF);

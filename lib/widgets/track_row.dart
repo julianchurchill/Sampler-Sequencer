@@ -761,10 +761,15 @@ class _StepRow extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    final numSteps =
+        context.select<SequencerModel, int>((m) => m.numSteps);
+    final stepsPerGroup =
+        context.select<SequencerModel, int>((m) => m.stepsPerGroup);
+
     return Row(
       children: [
-        for (int s = 0; s < kNumSteps; s++) ...[
-          if (s > 0 && s % 4 == 0) const SizedBox(width: 4),
+        for (int s = 0; s < numSteps; s++) ...[
+          if (s > 0 && s % stepsPerGroup == 0) const SizedBox(width: 4),
           Expanded(
             child: StepButton(
               trackIndex: trackIndex,

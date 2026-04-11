@@ -104,15 +104,8 @@ class TransportBar extends StatelessWidget {
 
           const Spacer(),
 
-          // ---- Step count label ----
-          const Text(
-            '16 STEPS  •  4/4',
-            style: TextStyle(
-              color: kTextDim,
-              fontSize: 10,
-              letterSpacing: 1.2,
-            ),
-          ),
+          // ---- Time signature (tappable) ----
+          const _TimeSignatureDisplay(),
 
           const Spacer(),
 
@@ -152,6 +145,151 @@ class _BpmButton extends StatelessWidget {
       onTap: onTap,
       onLongPress: onLongPress,
       child: Icon(icon, color: Colors.white70, size: 20),
+    );
+  }
+}
+
+// ---------------------------------------------------------------------------
+
+/// Tappable label showing the current step count and time signature.
+/// Opens the time signature picker sheet on tap.
+class _TimeSignatureDisplay extends StatelessWidget {
+  const _TimeSignatureDisplay();
+
+  @override
+  Widget build(BuildContext context) {
+    final numSteps = context.select<SequencerModel, int>((m) => m.numSteps);
+    final timeSigLabel =
+        context.select<SequencerModel, String>((m) => m.timeSignatureLabel);
+
+    return GestureDetector(
+      onTap: () => _showPicker(context),
+      child: Column(
+        mainAxisAlignment: MainAxisAlignment.center,
+        children: [
+          Text(
+            '$numSteps STEPS  •  $timeSigLabel',
+            style: const TextStyle(
+              color: kTextDim,
+              fontSize: 10,
+              letterSpacing: 1.2,
+            ),
+          ),
+          const SizedBox(height: 2),
+          const Text(
+            'TAP TO CHANGE',
+            style: TextStyle(
+              color: Color(0xFF555555),
+              fontSize: 7,
+              letterSpacing: 1.0,
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+
+  void _showPicker(BuildContext context) {
+    showModalBottomSheet<void>(
+      context: context,
+      backgroundColor: kPanelColor,
+      isScrollControlled: true,
+      shape: const RoundedRectangleBorder(
+        borderRadius: BorderRadius.vertical(top: Radius.circular(12)),
+      ),
+      // No ChangeNotifierProvider.value needed — SequencerModel is already
+      // accessible from the app-level MultiProvider above the Navigator.
+      builder: (_) => const _TimeSignaturePicker(),
+    );
+  }
+}
+
+// ---------------------------------------------------------------------------
+
+/// Bottom sheet listing all supported time signatures for the user to choose.
+class _TimeSignaturePicker extends StatelessWidget {
+  const _TimeSignaturePicker();
+
+  static const _color = Color(0xFF64B5F6); // blue accent for time sig
+
+  @override
+  Widget build(BuildContext context) {
+    final currentNumerator = context.select<SequencerModel, int>(
+      (m) => m.timeSignatureNumerator,
+    );
+    final currentDenominator = context.select<SequencerModel, int>(
+      (m) => m.timeSignatureDenominator,
+    );
+    final model = context.read<SequencerModel>();
+
+    // ConstrainedBox limits the sheet to 65 % of screen height so it never
+    // covers the full display.  Column + Flexible + ListView gives a header
+    // that is always visible, with the list scrollable if it overflows.
+    return ConstrainedBox(
+      constraints: BoxConstraints(
+        maxHeight: MediaQuery.sizeOf(context).height * 0.65,
+      ),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          const Padding(
+            padding: EdgeInsets.fromLTRB(16, 16, 16, 0),
+            child: Text(
+              'TIME SIGNATURE',
+              style: TextStyle(
+                color: _color,
+                fontSize: 11,
+                fontWeight: FontWeight.w800,
+                letterSpacing: 1.5,
+              ),
+            ),
+          ),
+          const SizedBox(height: 8),
+          Expanded(
+            child: ListView(
+              padding: const EdgeInsets.fromLTRB(0, 0, 0, 32),
+              children: kSupportedTimeSignatures.map((sig) {
+                final isSelected = sig.numerator == currentNumerator &&
+                    sig.denominator == currentDenominator;
+                return ListTile(
+                  contentPadding:
+                      const EdgeInsets.symmetric(horizontal: 16),
+                  dense: true,
+                  onTap: () {
+                    // Pop first so the picker's BuildContext is no longer
+                    // live when notifyListeners() fires — avoids a
+                    // duplicate-provider rebuild race on the modal route.
+                    Navigator.of(context).pop();
+                    model.setTimeSignature(sig.numerator, sig.denominator);
+                  },
+                  leading: Icon(
+                    isSelected
+                        ? Icons.radio_button_checked
+                        : Icons.radio_button_off,
+                    color: isSelected ? _color : kTextDim,
+                    size: 20,
+                  ),
+                  title: Text(
+                    sig.label,
+                    style: TextStyle(
+                      color: isSelected ? Colors.white : kTextDim,
+                      fontSize: 16,
+                      fontWeight: isSelected
+                          ? FontWeight.w700
+                          : FontWeight.normal,
+                    ),
+                  ),
+                  subtitle: Text(
+                    '${sig.numSteps} steps',
+                    style:
+                        const TextStyle(color: kTextDim, fontSize: 11),
+                  ),
+                );
+              }).toList(),
+            ),
+          ),
+        ],
+      ),
     );
   }
 }

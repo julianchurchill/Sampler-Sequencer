@@ -18,6 +18,54 @@ const double kStepsPerQuarterNote = 4.0;
 // endBeat for the Sequence equals the number of steps.
 const double kSequenceEndBeat = kNumSteps + 0.0;
 
+// ---------------------------------------------------------------------------
+// Time signature support
+// ---------------------------------------------------------------------------
+
+/// A time signature supported by the sequencer.
+///
+/// [numSteps] is computed as `numerator × (16 ÷ denominator)`, giving the
+/// number of 16th-note steps in one bar.
+///
+/// [stepsPerGroup] controls how the pad grid draws visual beat separators:
+/// - `/4` time  → 4 steps (one quarter note = 4 sixteenth notes)
+/// - compound `/8` time → 6 steps (one dotted quarter = 6 sixteenth notes)
+/// - irregular 7/8 → 2 steps (one eighth note = 2 sixteenth notes)
+class SupportedTimeSignature {
+  const SupportedTimeSignature(
+    this.numerator,
+    this.denominator,
+    this.stepsPerGroup,
+  );
+
+  final int numerator;
+  final int denominator;
+
+  /// Number of pad steps per visual beat group in the grid.
+  final int stepsPerGroup;
+
+  /// Total 16th-note steps in one bar for this time signature.
+  int get numSteps => numerator * (16 ~/ denominator);
+
+  /// Display label, e.g. "4/4".
+  String get label => '$numerator/$denominator';
+}
+
+const int kDefaultTimeSignatureNumerator = 4;
+const int kDefaultTimeSignatureDenominator = 4;
+
+/// All time signatures the user can select.
+const List<SupportedTimeSignature> kSupportedTimeSignatures = [
+  SupportedTimeSignature(2, 4, 4),  //  8 steps  (2 beats)
+  SupportedTimeSignature(3, 4, 4),  // 12 steps  (3 beats)
+  SupportedTimeSignature(4, 4, 4),  // 16 steps  (4 beats) — default
+  SupportedTimeSignature(5, 4, 4),  // 20 steps  (5 beats)
+  SupportedTimeSignature(6, 8, 6),  // 12 steps  (compound 2-feel)
+  SupportedTimeSignature(7, 8, 2),  // 14 steps  (irregular)
+  SupportedTimeSignature(9, 8, 6),  // 18 steps  (compound 3-feel)
+  SupportedTimeSignature(12, 8, 6), // 24 steps  (compound 4-feel)
+];
+
 const List<String> kTrackNames = ['KICK', 'SNARE', 'HH CLO', 'HH OPEN'];
 
 const List<Color> kTrackColors = [
