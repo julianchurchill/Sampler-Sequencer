@@ -11,8 +11,8 @@
 
 ## UI
 
-- [ ] show waveform of original sample when trimming
 - [x] hide the version number display behind a (i), click it to show overlay of version details. include the build timestamp in the version number display
+- [x] show waveform of original sample when trimming
 
 ## Developer
 

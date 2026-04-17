@@ -5,6 +5,14 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [2.5.0] - 2026-04-17
+
+### Added
+- Waveform display in the trim editor: the full sample waveform is now rendered
+  above the range slider, with the selected trim region highlighted in the track
+  colour and the remainder dimmed.  A white playhead line sweeps across the
+  waveform during preview playback.
+
 ## [2.4.0] - 2026-04-10
 
 ### Added

@@ -1,10 +1,18 @@
 import 'dart:async';
+import 'dart:typed_data';
 
 import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
 
+import '../audio/dsp_utils.dart';
+import '../audio/wav_io.dart';
 import '../constants.dart';
 import '../models/sequencer_model.dart';
+
+/// Number of amplitude bins computed from the PCM data for waveform display.
+/// 400 bins gives sub-pixel resolution on most phone screens without excessive
+/// computation time during load.
+const int _kWaveformBins = 400;
 
 /// Bottom sheet for non-destructive trim of the sample assigned to [trackIndex].
 /// Presents a RangeSlider over the full sample duration and shows the selected
@@ -30,6 +38,9 @@ class _TrimEditorSheetState extends State<TrimEditorSheet> {
   double _startFrac = 0.0;
   double _endFrac = 1.0;
 
+  // Waveform peak bins — null until PCM has been read.
+  Float64List? _waveformPeaks;
+
   @override
   void initState() {
     super.initState();
@@ -49,14 +60,27 @@ class _TrimEditorSheetState extends State<TrimEditorSheet> {
 
   Future<void> _loadDuration() async {
     final model = context.read<SequencerModel>();
-    final dur = await model.getTrackDuration(widget.trackIndex);
+    final path = model.samplePath(widget.trackIndex);
+    final results = await Future.wait([
+      model.getTrackDuration(widget.trackIndex),
+      readWav(path),
+    ]);
     if (!mounted) return;
+
+    final dur = results[0] as Duration?;
+    final wavData = results[1] as WavData?;
+
     setState(() {
       _duration = dur;
       _loading = false;
+      if (wavData != null) {
+        _waveformPeaks = extractWaveformPeaks(
+            wavData.samples, wavData.numChannels, _kWaveformBins);
+      }
       if (dur != null && dur.inMilliseconds > 0) {
         final startMs = model.trimStart(widget.trackIndex).inMilliseconds;
-        final endMs = model.trimEnd(widget.trackIndex)?.inMilliseconds ?? dur.inMilliseconds;
+        final endMs =
+            model.trimEnd(widget.trackIndex)?.inMilliseconds ?? dur.inMilliseconds;
         _startFrac = (startMs / dur.inMilliseconds).clamp(0.0, 1.0);
         _endFrac = (endMs / dur.inMilliseconds).clamp(0.0, 1.0);
       }
@@ -107,7 +131,7 @@ class _TrimEditorSheetState extends State<TrimEditorSheet> {
 
     setState(() { _previewing = true; _playProgress = 0.0; });
 
-    // Subscribe to position updates for the progress bar.
+    // Subscribe to position updates for the waveform playhead.
     _positionSub?.cancel();
     _positionSub = model.positionStream.listen((pos) {
       if (!mounted || trimDurationMs <= 0) return;
@@ -177,6 +201,24 @@ class _TrimEditorSheetState extends State<TrimEditorSheet> {
               style: TextStyle(color: Colors.white54, fontSize: 12),
             )
           else ...[
+            // Waveform display
+            SizedBox(
+              height: 80,
+              child: CustomPaint(
+                painter: _WaveformPainter(
+                  peaks: _waveformPeaks ?? Float64List(0),
+                  startFrac: _startFrac,
+                  endFrac: _endFrac,
+                  playheadFrac: _previewing
+                      ? _startFrac + _playProgress * (_endFrac - _startFrac)
+                      : null,
+                  color: color,
+                ),
+                size: Size.infinite,
+              ),
+            ),
+            const SizedBox(height: 8),
+
             // Time labels
             Row(
               mainAxisAlignment: MainAxisAlignment.spaceBetween,
@@ -217,53 +259,6 @@ class _TrimEditorSheetState extends State<TrimEditorSheet> {
                 },
               ),
             ),
-
-            // Playback progress indicator
-            const SizedBox(height: 4),
-            LayoutBuilder(
-                builder: (context, constraints) {
-                  final w = constraints.maxWidth;
-                  final indicatorX = (_playProgress * w).clamp(0.0, w);
-                  return SizedBox(
-                    height: 16,
-                    child: Stack(
-                      clipBehavior: Clip.none,
-                      children: [
-                        Positioned(
-                          left: 0,
-                          right: 0,
-                          top: 7,
-                          child: Container(
-                            height: 2,
-                            color: color.withValues(alpha: 0.25),
-                          ),
-                        ),
-                        Positioned(
-                          left: 0,
-                          width: indicatorX,
-                          top: 7,
-                          child: Container(
-                            height: 2,
-                            color: color.withValues(alpha: 0.7),
-                          ),
-                        ),
-                        Positioned(
-                          left: (indicatorX - 6).clamp(0.0, w - 12),
-                          top: 1,
-                          child: Container(
-                            width: 12,
-                            height: 12,
-                            decoration: BoxDecoration(
-                              color: color,
-                              shape: BoxShape.circle,
-                            ),
-                          ),
-                        ),
-                      ],
-                    ),
-                  );
-                },
-              ),
 
             // Total duration label + preview button
             Row(
@@ -320,4 +315,63 @@ class _TrimEditorSheetState extends State<TrimEditorSheet> {
       ),
     );
   }
+}
+
+class _WaveformPainter extends CustomPainter {
+  _WaveformPainter({
+    required this.peaks,
+    required this.startFrac,
+    required this.endFrac,
+    required this.color,
+    this.playheadFrac,
+  });
+
+  final Float64List peaks;
+  final double startFrac;
+  final double endFrac;
+  final Color color;
+  final double? playheadFrac;
+
+  @override
+  void paint(Canvas canvas, Size size) {
+    if (peaks.isEmpty || size.width <= 0 || size.height <= 0) return;
+    final midY = size.height / 2;
+    final binWidth = size.width / peaks.length;
+
+    for (int i = 0; i < peaks.length; i++) {
+      final x = (i + 0.5) * binWidth;
+      final frac = i / peaks.length;
+      final isActive = frac >= startFrac && frac < endFrac;
+      final h = (peaks[i] * midY).clamp(1.0, midY);
+      canvas.drawLine(
+        Offset(x, midY - h),
+        Offset(x, midY + h),
+        Paint()
+          ..color = isActive
+              ? color.withValues(alpha: 0.85)
+              : color.withValues(alpha: 0.2)
+          ..strokeWidth = binWidth.clamp(1.0, 3.0)
+          ..strokeCap = StrokeCap.round,
+      );
+    }
+
+    if (playheadFrac != null) {
+      final x = (playheadFrac! * size.width).clamp(0.0, size.width);
+      canvas.drawLine(
+        Offset(x, 0),
+        Offset(x, size.height),
+        Paint()
+          ..color = Colors.white
+          ..strokeWidth = 1.5,
+      );
+    }
+  }
+
+  @override
+  bool shouldRepaint(_WaveformPainter old) =>
+      peaks != old.peaks ||
+      startFrac != old.startFrac ||
+      endFrac != old.endFrac ||
+      playheadFrac != old.playheadFrac ||
+      color != old.color;
 }

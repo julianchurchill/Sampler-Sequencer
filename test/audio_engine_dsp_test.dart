@@ -126,6 +126,58 @@ void main() {
   });
 
   // -------------------------------------------------------------------------
+  group('extractWaveformPeaks', () {
+    test('empty samples returns zero-filled bins', () {
+      final peaks = extractWaveformPeaks(Int16List(0), 1, 4);
+      expect(peaks.length, equals(4),
+          reason: 'should return numBins values even for empty input');
+      for (int i = 0; i < peaks.length; i++) {
+        expect(peaks[i], equals(0.0),
+            reason: 'bin $i should be 0.0 for empty samples');
+      }
+    });
+
+    test('zero numBins returns empty list', () {
+      final peaks = extractWaveformPeaks(Int16List.fromList([32767]), 1, 0);
+      expect(peaks.length, equals(0),
+          reason: 'zero bins requested → empty result');
+    });
+
+    test('single channel: absolute peak per bin normalized 0–1', () {
+      // 4 frames, 4 bins → 1 frame per bin
+      final samples = Int16List.fromList([0, 32767, -32767, 16384]);
+      final peaks = extractWaveformPeaks(samples, 1, 4);
+      expect(peaks.length, equals(4), reason: 'one bin per frame');
+      expect(peaks[0], closeTo(0.0, 0.001),
+          reason: 'bin 0: sample is 0 → peak 0.0');
+      expect(peaks[1], closeTo(1.0, 0.001),
+          reason: 'bin 1: max positive Int16 value → peak 1.0');
+      expect(peaks[2], closeTo(1.0, 0.001),
+          reason: 'bin 2: max negative abs maps to peak 1.0');
+      expect(peaks[3], closeTo(0.5, 0.002),
+          reason: 'bin 3: 16384/32767 ≈ 0.5');
+    });
+
+    test('stereo: peak is max absolute amplitude across channels', () {
+      // 1 stereo frame: L=0, R=32767 → peak should be 1.0
+      final samples = Int16List.fromList([0, 32767]);
+      final peaks = extractWaveformPeaks(samples, 2, 1);
+      expect(peaks[0], closeTo(1.0, 0.001),
+          reason: 'should take max from right channel (R=32767)');
+    });
+
+    test('more bins than frames: all bins are in valid range 0–1', () {
+      final samples = Int16List.fromList([16384, 16384]);
+      final peaks = extractWaveformPeaks(samples, 1, 8);
+      expect(peaks.length, equals(8), reason: 'should return numBins values');
+      for (int i = 0; i < peaks.length; i++) {
+        expect(peaks[i], inInclusiveRange(0.0, 1.0),
+            reason: 'bin $i value ${peaks[i]} should be in [0.0, 1.0]');
+      }
+    });
+  });
+
+  // -------------------------------------------------------------------------
   group('drum generators', () {
     test('generateKick808 produces the expected number of samples (500 ms)', () {
       final buf = generateKick808(_kSampleRate);
