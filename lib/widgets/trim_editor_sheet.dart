@@ -1,4 +1,5 @@
 import 'dart:async';
+import 'dart:math' as math;
 import 'dart:typed_data';
 
 import 'package:flutter/material.dart';
@@ -10,9 +11,26 @@ import '../constants.dart';
 import '../models/sequencer_model.dart';
 
 /// Number of amplitude bins computed from the PCM data for waveform display.
-/// 400 bins gives sub-pixel resolution on most phone screens without excessive
-/// computation time during load.
 const int _kWaveformBins = 400;
+
+/// Maps a linear slider value [v] in [0, 1] to a stretch ratio in [0.1, 5.0]
+/// using a two-segment exponential curve symmetric around 1.0× at v = 0.5.
+double _sliderToRatio(double v) {
+  if (v <= 0.5) {
+    return 0.1 * math.pow(10.0, v * 2.0);
+  } else {
+    return math.pow(5.0, (v - 0.5) * 2.0).toDouble();
+  }
+}
+
+/// Inverse of [_sliderToRatio].
+double _ratioToSlider(double r) {
+  if (r <= 1.0) {
+    return math.log(r / 0.1) / math.log(10.0) * 0.5;
+  } else {
+    return 0.5 + math.log(r) / math.log(5.0) * 0.5;
+  }
+}
 
 /// Bottom sheet for non-destructive trim of the sample assigned to [trackIndex].
 /// Presents a RangeSlider over the full sample duration and shows the selected
@@ -40,6 +58,12 @@ class _TrimEditorSheetState extends State<TrimEditorSheet> {
 
   // Waveform peak bins — null until PCM has been read.
   Float64List? _waveformPeaks;
+
+  // Stretch slider position (0.0–1.0 → 0.1×–5.0×, 0.5 = 1.0×).
+  double _stretchSlider = 0.5;
+
+  // True while the APPLY action is computing the stretched WAV.
+  bool _applying = false;
 
   @override
   void initState() {
@@ -84,6 +108,8 @@ class _TrimEditorSheetState extends State<TrimEditorSheet> {
         _startFrac = (startMs / dur.inMilliseconds).clamp(0.0, 1.0);
         _endFrac = (endMs / dur.inMilliseconds).clamp(0.0, 1.0);
       }
+      _stretchSlider =
+          _ratioToSlider(model.stretchRatio(widget.trackIndex)).clamp(0.0, 1.0);
     });
   }
 
@@ -152,23 +178,35 @@ class _TrimEditorSheetState extends State<TrimEditorSheet> {
     await model.previewTrim(widget.trackIndex, start, end);
   }
 
-  void _applyTrim() {
+  Future<void> _apply() async {
+    if (_applying) return;
+    setState(() => _applying = true);
+    if (_previewing) _stopPreview();
+
     final model = context.read<SequencerModel>();
     final dur = _duration;
-    if (dur == null) return;
-    final startMs = (_startFrac * dur.inMilliseconds).round();
-    final endMs = _effectiveEndMs(_endFrac, dur);
-    final isFullRange = startMs <= 0 && endMs >= dur.inMilliseconds;
-    if (isFullRange) {
-      model.clearTrim(widget.trackIndex);
-    } else {
-      model.setTrim(
-        widget.trackIndex,
-        Duration(milliseconds: startMs),
-        endMs < dur.inMilliseconds ? Duration(milliseconds: endMs) : null,
-      );
+    if (dur != null) {
+      final startMs = (_startFrac * dur.inMilliseconds).round();
+      final endMs = _effectiveEndMs(_endFrac, dur);
+      if (startMs <= 0 && endMs >= dur.inMilliseconds) {
+        model.clearTrim(widget.trackIndex);
+      } else {
+        model.setTrim(
+          widget.trackIndex,
+          Duration(milliseconds: startMs),
+          endMs < dur.inMilliseconds ? Duration(milliseconds: endMs) : null,
+        );
+      }
     }
-    Navigator.pop(context);
+
+    final ratio = _sliderToRatio(_stretchSlider);
+    if ((ratio - 1.0).abs() < 0.005) {
+      await model.clearStretch(widget.trackIndex);
+    } else {
+      await model.setStretch(widget.trackIndex, ratio);
+    }
+
+    if (mounted) Navigator.pop(context);
   }
 
   @override
@@ -280,34 +318,95 @@ class _TrimEditorSheetState extends State<TrimEditorSheet> {
             ),
 
             const SizedBox(height: 8),
+            const Divider(color: Colors.white12),
+            const SizedBox(height: 4),
+
+            // Stretch section
+            Text(
+              'STRETCH',
+              style: TextStyle(
+                color: color,
+                fontSize: 11,
+                fontWeight: FontWeight.w800,
+                letterSpacing: 1.5,
+              ),
+            ),
+            const SizedBox(height: 8),
+            Row(
+              mainAxisAlignment: MainAxisAlignment.spaceBetween,
+              children: [
+                Text(
+                  '${_sliderToRatio(_stretchSlider).toStringAsFixed(2)}×',
+                  style: const TextStyle(
+                      color: Colors.white, fontSize: 13, fontWeight: FontWeight.w600),
+                ),
+                Text(
+                  'Stretched: ${_fmt(Duration(milliseconds: (dur.inMilliseconds * _sliderToRatio(_stretchSlider)).round()))}',
+                  style: const TextStyle(color: Colors.white54, fontSize: 11),
+                ),
+              ],
+            ),
+            SliderTheme(
+              data: SliderTheme.of(context).copyWith(
+                trackHeight: 4,
+                activeTrackColor: color,
+                inactiveTrackColor: color.withValues(alpha: 0.2),
+                thumbColor: color,
+                overlayColor: color.withValues(alpha: 0.15),
+              ),
+              child: Slider(
+                value: _stretchSlider,
+                onChanged: (v) => setState(() => _stretchSlider = v),
+              ),
+            ),
+
+            const SizedBox(height: 4),
 
             Row(
               mainAxisAlignment: MainAxisAlignment.end,
               children: [
                 TextButton(
-                  onPressed: () {
-                    if (_previewing) _stopPreview();
-                    setState(() {
-                      _startFrac = 0.0;
-                      _endFrac = 1.0;
-                    });
-                  },
+                  onPressed: _applying
+                      ? null
+                      : () {
+                          if (_previewing) _stopPreview();
+                          setState(() {
+                            _startFrac = 0.0;
+                            _endFrac = 1.0;
+                            _stretchSlider = 0.5;
+                          });
+                        },
                   child: const Text('RESET', style: TextStyle(color: Colors.white54)),
                 ),
                 const SizedBox(width: 8),
                 TextButton(
-                  onPressed: () => Navigator.pop(context),
+                  onPressed: _applying ? null : () => Navigator.pop(context),
                   child: const Text('CANCEL', style: TextStyle(color: Colors.white54)),
                 ),
                 const SizedBox(width: 8),
-                ElevatedButton(
-                  style: ElevatedButton.styleFrom(
-                    backgroundColor: color,
-                    foregroundColor: Colors.black,
-                  ),
-                  onPressed: _applyTrim,
-                  child: const Text('APPLY'),
-                ),
+                _applying
+                    ? SizedBox(
+                        width: 72,
+                        height: 36,
+                        child: Center(
+                          child: SizedBox(
+                            width: 20,
+                            height: 20,
+                            child: CircularProgressIndicator(
+                              strokeWidth: 2,
+                              color: color,
+                            ),
+                          ),
+                        ),
+                      )
+                    : ElevatedButton(
+                        style: ElevatedButton.styleFrom(
+                          backgroundColor: color,
+                          foregroundColor: Colors.black,
+                        ),
+                        onPressed: _apply,
+                        child: const Text('APPLY'),
+                      ),
               ],
             ),
           ],

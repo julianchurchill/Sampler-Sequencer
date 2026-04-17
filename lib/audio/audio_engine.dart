@@ -6,6 +6,7 @@ import 'package:path_provider/path_provider.dart';
 
 import '../constants.dart';
 import 'dsp_utils.dart';
+import 'time_stretcher.dart';
 
 // ---------------------------------------------------------------------------
 // AudioEngine
@@ -97,6 +98,12 @@ class AudioEngine {
   /// Per-track custom file override (null = use preset).
   final List<String?> _trackCustomPath = List.filled(kNumTracks, null);
 
+  /// Per-track time-stretch ratio (1.0 = no stretch).
+  final List<double> _stretchRatio = List.filled(kNumTracks, 1.0);
+
+  /// Per-track path to the pre-computed stretched WAV (null = no stretch active).
+  final List<String?> _stretchedPath = List.filled(kNumTracks, null);
+
   /// Per-track volume (0.0–1.0, default 1.0).
   final List<double> _trackVolume = List.filled(kNumTracks, 1.0);
 
@@ -159,9 +166,18 @@ class AudioEngine {
   int presetIndex(int track) => _trackPresetIndex[track];
   double trackVolume(int track) => _trackVolume[track];
 
-  /// Resolved sample path for [track] — custom file if set, otherwise the cached preset WAV.
+  /// Resolved sample path for [track] — stretched WAV if active, custom file if
+  /// set, otherwise the cached preset WAV.
   String samplePath(int track) =>
+      _stretchedPath[track] ??
+      _trackCustomPath[track] ??
+      _presetPaths[_trackPresetIndex[track]];
+
+  /// Unstreched source path for [track] — custom file if set, otherwise preset.
+  String _originalPath(int track) =>
       _trackCustomPath[track] ?? _presetPaths[_trackPresetIndex[track]];
+
+  double stretchRatio(int track) => _stretchRatio[track];
 
   Duration trimStart(int track) => _trimStart[track];
   Duration? trimEnd(int track) => _trimEnd[track];
@@ -305,6 +321,7 @@ class AudioEngine {
     _trackCustomPath[track] = null;
     _trackPresetIndex[track] = presetIndex;
     _trackNames[track] = kDrumPresets[presetIndex].name;
+    _clearStretchCache(track);
     return _reloadSourceForTrack(track);
   }
 
@@ -316,6 +333,7 @@ class AudioEngine {
     _trackNames[track] = filename.contains('.')
         ? filename.substring(0, filename.lastIndexOf('.'))
         : filename;
+    _clearStretchCache(track);
     return _reloadSourceForTrack(track);
   }
 
@@ -324,6 +342,7 @@ class AudioEngine {
   Future<void> setCustomPathWithName(int track, String path, String name) {
     _trackCustomPath[track] = path;
     _trackNames[track] = name;
+    _clearStretchCache(track);
     return _reloadSourceForTrack(track);
   }
 
@@ -332,7 +351,13 @@ class AudioEngine {
   Future<void> clearCustomPath(int track) {
     _trackCustomPath[track] = null;
     _trackNames[track] = kDrumPresets[_trackPresetIndex[track]].name;
+    _clearStretchCache(track);
     return _reloadSourceForTrack(track);
+  }
+
+  void _clearStretchCache(int track) {
+    _stretchRatio[track] = 1.0;
+    _stretchedPath[track] = null;
   }
 
   /// Reload all sequencer player slots for [track] with the current
@@ -406,6 +431,45 @@ class AudioEngine {
     _trimStart[track] = Duration.zero;
     _trimEnd[track] = null;
     _schedulePlayerModeSwitch(track, PlayerMode.lowLatency);
+  }
+
+  // ---------------------------------------------------------------------------
+  // Stretch management
+  // ---------------------------------------------------------------------------
+
+  /// Apply phase-vocoder time stretch to [track]'s sample.
+  ///
+  /// Runs [stretchWavFile] in a background isolate via [compute], then reloads
+  /// the players with the resulting WAV.  Ratios within 0.5 % of 1.0 are
+  /// treated as "no stretch" and delegate to [clearStretch] instead.
+  Future<void> setStretch(int track, double ratio) async {
+    if ((ratio - 1.0).abs() < 0.005) {
+      await clearStretch(track);
+      return;
+    }
+    final original = _originalPath(track);
+    final tempDir = await getTemporaryDirectory();
+    final pathHash = original.hashCode.abs();
+    final ratioStr = ratio.toStringAsFixed(3);
+    final outputPath =
+        '${tempDir.path}/sampler_stretch_t${track}_${pathHash}_r$ratioStr.wav';
+
+    final result = await compute(
+      stretchWavFile,
+      StretchArgs(inputPath: original, ratio: ratio, outputPath: outputPath),
+    );
+    if (result != null) {
+      _stretchRatio[track] = ratio;
+      _stretchedPath[track] = result;
+      await _reloadSourceForTrack(track);
+    }
+  }
+
+  /// Remove stretch from [track]; sample reverts to its original duration.
+  Future<void> clearStretch(int track) async {
+    _stretchRatio[track] = 1.0;
+    _stretchedPath[track] = null;
+    await _reloadSourceForTrack(track);
   }
 
   /// Asynchronously rebuild [track]'s primary sequencer player in [mode].

@@ -5,6 +5,15 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [2.6.0] - 2026-04-17
+
+### Added
+- Phase-vocoder time stretching in the sample editor: a STRETCH slider (0.10×–5.0×)
+  with a logarithmic curve centred on 1.0× lets you independently lengthen or shorten
+  any sample without changing its pitch.  Stretch is applied to the full sample before
+  trim, supports stereo files, and is preserved across app restarts.  The APPLY button
+  shows a spinner while the stretch WAV is being computed in a background isolate.
+
 ## [2.5.0] - 2026-04-17
 
 ### Added
