@@ -109,6 +109,7 @@ class SequencerModel extends ChangeNotifier {
   bool hasTrim(int track) => _audio.hasTrim(track);
   Duration trimStart(int track) => _audio.trimStart(track);
   Duration? trimEnd(int track) => _audio.trimEnd(track);
+  String samplePath(int track) => _audio.samplePath(track);
   bool isMuted(int track) => _audio.isMuted(track);
   Object? get saveError => _saveError;
 
