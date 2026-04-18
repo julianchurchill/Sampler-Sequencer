@@ -249,23 +249,51 @@ class _TrimEditorSheetState extends State<TrimEditorSheet> {
               style: TextStyle(color: Colors.white54, fontSize: 12),
             )
           else ...[
-            // Waveform display
+            // Waveform with trim slider overlaid — the track is transparent so
+            // only the thumb circles float on the waveform.  Saves the vertical
+            // space a separate RangeSlider would occupy.
             SizedBox(
               height: 80,
-              child: CustomPaint(
-                painter: _WaveformPainter(
-                  peaks: _waveformPeaks ?? Float64List(0),
-                  startFrac: _startFrac,
-                  endFrac: _endFrac,
-                  playheadFrac: _previewing
-                      ? _startFrac + _playProgress * (_endFrac - _startFrac)
-                      : null,
-                  color: color,
-                ),
-                size: Size.infinite,
+              child: Stack(
+                children: [
+                  CustomPaint(
+                    painter: _WaveformPainter(
+                      peaks: _waveformPeaks ?? Float64List(0),
+                      startFrac: _startFrac,
+                      endFrac: _endFrac,
+                      playheadFrac: _previewing
+                          ? _startFrac + _playProgress * (_endFrac - _startFrac)
+                          : null,
+                      color: color,
+                    ),
+                    size: Size.infinite,
+                  ),
+                  SliderTheme(
+                    data: SliderTheme.of(context).copyWith(
+                      trackHeight: 0,
+                      rangeThumbShape: const RoundRangeSliderThumbShape(
+                        enabledThumbRadius: 8,
+                      ),
+                      activeTrackColor: Colors.transparent,
+                      inactiveTrackColor: Colors.transparent,
+                      thumbColor: color,
+                      overlayColor: color.withValues(alpha: 0.15),
+                    ),
+                    child: RangeSlider(
+                      values: RangeValues(_startFrac, _endFrac),
+                      onChanged: (v) {
+                        if (_previewing) _stopPreview();
+                        setState(() {
+                          _startFrac = v.start;
+                          _endFrac = v.end;
+                        });
+                      },
+                    ),
+                  ),
+                ],
               ),
             ),
-            const SizedBox(height: 8),
+            const SizedBox(height: 4),
 
             // Time labels
             Row(
@@ -280,32 +308,6 @@ class _TrimEditorSheetState extends State<TrimEditorSheet> {
                   style: const TextStyle(color: Colors.white, fontSize: 12),
                 ),
               ],
-            ),
-            const SizedBox(height: 4),
-
-            // Range slider
-            SliderTheme(
-              data: SliderTheme.of(context).copyWith(
-                trackHeight: 4,
-                rangeThumbShape: const RoundRangeSliderThumbShape(
-                  enabledThumbRadius: 8,
-                ),
-                activeTrackColor: color,
-                inactiveTrackColor: color.withValues(alpha: 0.2),
-                thumbColor: color,
-                overlayColor: color.withValues(alpha: 0.15),
-              ),
-              child: RangeSlider(
-                values: RangeValues(_startFrac, _endFrac),
-                onChanged: (v) {
-                  // Stop any active preview when the user adjusts the range.
-                  if (_previewing) _stopPreview();
-                  setState(() {
-                    _startFrac = v.start;
-                    _endFrac = v.end;
-                  });
-                },
-              ),
             ),
 
             // Total duration label + preview button
