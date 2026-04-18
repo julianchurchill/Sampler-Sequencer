@@ -114,6 +114,7 @@ class _TrackSettingsSheet extends StatelessWidget {
       context: context,
       backgroundColor: kPanelColor,
       isScrollControlled: true,
+      enableDrag: false,
       constraints: BoxConstraints(
         maxHeight: MediaQuery.of(context).size.height * 0.75,
       ),
