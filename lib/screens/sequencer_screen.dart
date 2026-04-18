@@ -162,26 +162,29 @@ class _SequencerScreenState extends State<SequencerScreen> {
           ),
         ],
       ),
-      body: Column(
-        children: [
-          // ---- Step grid ----
-          Expanded(
-            child: Padding(
-              padding: const EdgeInsets.fromLTRB(6, 6, 6, 2),
-              child: Column(
-                children: [
-                  for (int t = 0; t < kNumTracks; t++) ...[
-                    Expanded(child: TrackRow(trackIndex: t)),
-                    if (t < kNumTracks - 1)
-                      const Divider(height: 1, color: Color(0xFF1E1E1E)),
+      body: SafeArea(
+        top: false,
+        child: Column(
+          children: [
+            // ---- Step grid ----
+            Expanded(
+              child: Padding(
+                padding: const EdgeInsets.fromLTRB(6, 6, 6, 2),
+                child: Column(
+                  children: [
+                    for (int t = 0; t < kNumTracks; t++) ...[
+                      Expanded(child: TrackRow(trackIndex: t)),
+                      if (t < kNumTracks - 1)
+                        const Divider(height: 1, color: Color(0xFF1E1E1E)),
+                    ],
                   ],
-                ],
+                ),
               ),
             ),
-          ),
-          // ---- Transport ----
-          const TransportBar(),
-        ],
+            // ---- Transport ----
+            const TransportBar(),
+          ],
+        ),
       ),
     );
   }
