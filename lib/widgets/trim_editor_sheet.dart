@@ -79,10 +79,10 @@ class _TrimEditorSheetState extends State<TrimEditorSheet> {
   void dispose() {
     _positionSub?.cancel();
     _previewTimer?.cancel();
-    // Stop any ongoing preview when the sheet closes.
-    if (_previewing) {
-      context.read<SequencerModel>().stopTrack(widget.trackIndex);
-    }
+    // Always stop — even if the UI timer already reset _previewing to false,
+    // AudioEngine._previewPlaying may still be true (no auto-reset when
+    // end == null), which blocks the next getTrackDuration call.
+    context.read<SequencerModel>().stopTrack(widget.trackIndex);
     super.dispose();
   }
 
