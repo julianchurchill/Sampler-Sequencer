@@ -367,8 +367,12 @@ class _SoundPickerSheetState extends State<_SoundPickerSheet> {
   Future<void> _commitRename(BuildContext dlgCtx, SampleEntry entry) async {
     final name = _renameController.text.trim();
     if (name.isEmpty) return;
-    Navigator.pop(dlgCtx);
-    await context.read<SampleLibrary>().rename(entry, name);
+    try {
+      Navigator.pop(dlgCtx);
+      await context.read<SampleLibrary>().rename(entry, name);
+    } catch (e, st) {
+      debugPrint('_commitRename error: $e\n$st');
+    }
   }
 
   @override
@@ -449,7 +453,11 @@ class _SoundPickerSheetState extends State<_SoundPickerSheet> {
                   Navigator.pop(context);
                 },
                 onRename: () => _promptRename(context, entry),
-                onDelete: () => context.read<SampleLibrary>().delete(entry),
+                onDelete: () {
+                  context.read<SampleLibrary>().delete(entry).catchError((Object e) {
+                    debugPrint('delete error: $e');
+                  });
+                },
               ),
 
           const Divider(height: 24, color: Color(0xFF2A2A2A)),
@@ -496,7 +504,9 @@ class _RecordSectionState extends State<_RecordSection> {
   @override
   void dispose() {
     if (_recordState == _RecordState.recording) {
-      _recorder.stop(); // discard if sheet closed mid-recording
+      _recorder.stop().catchError((Object e) {
+        debugPrint('recorder stop-on-dispose error: $e');
+      });
     }
     _recorder.dispose();
     _nameController.dispose();
