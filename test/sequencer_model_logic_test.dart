@@ -31,6 +31,7 @@ void main() {
     when(() => audio.hasTrim(any())).thenReturn(false);
     when(() => audio.trimStart(any())).thenReturn(Duration.zero);
     when(() => audio.trimEnd(any())).thenReturn(null);
+    when(() => audio.stretchRatio(any())).thenReturn(1.0);
     when(() => audio.setMuted(any(), any())).thenReturn(null);
     when(() => audio.setPreset(any(), any())).thenAnswer((_) async {});
     when(() => audio.clearCustomPath(any())).thenAnswer((_) async {});
