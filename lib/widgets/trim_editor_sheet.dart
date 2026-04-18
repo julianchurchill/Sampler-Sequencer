@@ -62,6 +62,10 @@ class _TrimEditorSheetState extends State<TrimEditorSheet> {
   // Stretch slider position (0.0–1.0 → 0.1×–5.0×, 0.5 = 1.0×).
   double _stretchSlider = 0.5;
 
+  // The stretch ratio already baked into the loaded sample (from the model).
+  // Used to compute display durations relative to the current slider position.
+  double _appliedStretchRatio = 1.0;
+
   // True while the APPLY action is computing the stretched WAV.
   bool _applying = false;
 
@@ -108,8 +112,9 @@ class _TrimEditorSheetState extends State<TrimEditorSheet> {
         _startFrac = (startMs / dur.inMilliseconds).clamp(0.0, 1.0);
         _endFrac = (endMs / dur.inMilliseconds).clamp(0.0, 1.0);
       }
+      _appliedStretchRatio = model.stretchRatio(widget.trackIndex);
       _stretchSlider =
-          _ratioToSlider(model.stretchRatio(widget.trackIndex)).clamp(0.0, 1.0);
+          _ratioToSlider(_appliedStretchRatio).clamp(0.0, 1.0);
     });
   }
 
@@ -224,6 +229,15 @@ class _TrimEditorSheetState extends State<TrimEditorSheet> {
     final color = kTrackColors[widget.trackIndex];
     final dur = _duration;
 
+    // Scale displayed durations by the ratio of the current slider to the
+    // already-applied stretch, so labels update live as the slider is dragged.
+    final displayScale = dur != null && _appliedStretchRatio > 0
+        ? _sliderToRatio(_stretchSlider) / _appliedStretchRatio
+        : 1.0;
+    final displayDurMs = dur != null
+        ? (dur.inMilliseconds * displayScale).round()
+        : 0;
+
     return Padding(
       padding: const EdgeInsets.fromLTRB(16, 16, 16, 24),
       child: Column(
@@ -300,11 +314,11 @@ class _TrimEditorSheetState extends State<TrimEditorSheet> {
               mainAxisAlignment: MainAxisAlignment.spaceBetween,
               children: [
                 Text(
-                  'Start: ${_fmt(Duration(milliseconds: (_startFrac * dur.inMilliseconds).round()))}',
+                  'Start: ${_fmt(Duration(milliseconds: (_startFrac * displayDurMs).round()))}',
                   style: const TextStyle(color: Colors.white, fontSize: 12),
                 ),
                 Text(
-                  'End: ${_fmt(Duration(milliseconds: (_endFrac * dur.inMilliseconds).round()))}',
+                  'End: ${_fmt(Duration(milliseconds: (_endFrac * displayDurMs).round()))}',
                   style: const TextStyle(color: Colors.white, fontSize: 12),
                 ),
               ],
@@ -315,7 +329,7 @@ class _TrimEditorSheetState extends State<TrimEditorSheet> {
               mainAxisAlignment: MainAxisAlignment.spaceBetween,
               children: [
                 Text(
-                  'Total: ${_fmt(dur)}',
+                  'Total: ${_fmt(Duration(milliseconds: displayDurMs))}',
                   style: const TextStyle(color: Colors.white54, fontSize: 11),
                 ),
                 IconButton(
@@ -353,7 +367,7 @@ class _TrimEditorSheetState extends State<TrimEditorSheet> {
                       color: Colors.white, fontSize: 13, fontWeight: FontWeight.w600),
                 ),
                 Text(
-                  'Stretched: ${_fmt(Duration(milliseconds: (dur.inMilliseconds * _sliderToRatio(_stretchSlider)).round()))}',
+                  'Stretched: ${_fmt(Duration(milliseconds: displayDurMs))}',
                   style: const TextStyle(color: Colors.white54, fontSize: 11),
                 ),
               ],
