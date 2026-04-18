@@ -86,6 +86,7 @@ class _TrackLabel extends StatelessWidget {
       context: context,
       backgroundColor: kPanelColor,
       isScrollControlled: true,
+      enableDrag: false,
       shape: const RoundedRectangleBorder(
         borderRadius: BorderRadius.vertical(top: Radius.circular(12)),
       ),
@@ -183,14 +184,27 @@ class _TrackSettingsSheet extends StatelessWidget {
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
           // Header
-          Text(
-            model.trackName(trackIndex).toUpperCase(),
-            style: TextStyle(
-              color: color,
-              fontSize: 11,
-              fontWeight: FontWeight.w800,
-              letterSpacing: 1.5,
-            ),
+          Row(
+            mainAxisAlignment: MainAxisAlignment.spaceBetween,
+            children: [
+              Text(
+                model.trackName(trackIndex).toUpperCase(),
+                style: TextStyle(
+                  color: color,
+                  fontSize: 11,
+                  fontWeight: FontWeight.w800,
+                  letterSpacing: 1.5,
+                ),
+              ),
+              IconButton(
+                onPressed: () => Navigator.pop(context),
+                icon: const Icon(Icons.close, size: 18),
+                color: kTextDim,
+                padding: EdgeInsets.zero,
+                constraints: const BoxConstraints(),
+                tooltip: 'Close',
+              ),
+            ],
           ),
           const SizedBox(height: 20),
 
@@ -370,14 +384,27 @@ class _SoundPickerSheetState extends State<_SoundPickerSheet> {
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
           // ---- Title ----
-          Text(
-            'SELECT SOUND',
-            style: TextStyle(
-              color: color,
-              fontSize: 11,
-              fontWeight: FontWeight.w800,
-              letterSpacing: 1.5,
-            ),
+          Row(
+            mainAxisAlignment: MainAxisAlignment.spaceBetween,
+            children: [
+              Text(
+                'SELECT SOUND',
+                style: TextStyle(
+                  color: color,
+                  fontSize: 11,
+                  fontWeight: FontWeight.w800,
+                  letterSpacing: 1.5,
+                ),
+              ),
+              IconButton(
+                onPressed: () => Navigator.pop(context),
+                icon: const Icon(Icons.close, size: 18),
+                color: kTextDim,
+                padding: EdgeInsets.zero,
+                constraints: const BoxConstraints(),
+                tooltip: 'Close',
+              ),
+            ],
           ),
           const SizedBox(height: 12),
 
