@@ -22,6 +22,7 @@ const _kPrefsTrackTrimStart = 'track_trim_start_'; // milliseconds
 const _kPrefsTrackTrimEnd = 'track_trim_end_';     // milliseconds, -1 = none
 const _kPrefsTrackMuted = 'track_muted_';          // bool
 const _kPrefsStepVelocity = 'step_vel_';           // comma-separated floats per track
+const _kPrefsTrackStretch = 'track_stretch_';      // double, 1.0 = no stretch
 
 class SequencerModel extends ChangeNotifier {
   int _bpm = kDefaultBpm;
@@ -110,6 +111,7 @@ class SequencerModel extends ChangeNotifier {
   Duration trimStart(int track) => _audio.trimStart(track);
   Duration? trimEnd(int track) => _audio.trimEnd(track);
   String samplePath(int track) => _audio.samplePath(track);
+  double stretchRatio(int track) => _audio.stretchRatio(track);
   bool isMuted(int track) => _audio.isMuted(track);
   Object? get saveError => _saveError;
 
@@ -207,6 +209,10 @@ class SequencerModel extends ChangeNotifier {
       }
       final muted = prefs.getBool('$_kPrefsTrackMuted$t');
       if (muted != null) _audio.setMuted(t, muted);
+      final stretch = prefs.getDouble('$_kPrefsTrackStretch$t') ?? 1.0;
+      if ((stretch - 1.0).abs() >= 0.005) {
+        await _audio.setStretch(t, stretch);
+      }
       final velStr = prefs.getString('$_kPrefsStepVelocity$t');
       if (velStr != null) {
         final parts = velStr.split(',');
@@ -249,6 +255,7 @@ class SequencerModel extends ChangeNotifier {
         final end = _audio.trimEnd(t);
         prefs.setInt('$_kPrefsTrackTrimEnd$t', end != null ? end.inMilliseconds : -1);
         prefs.setBool('$_kPrefsTrackMuted$t', _audio.isMuted(t));
+        prefs.setDouble('$_kPrefsTrackStretch$t', _audio.stretchRatio(t));
         prefs.setString('$_kPrefsStepVelocity$t',
             _stepVelocity[t].map((v) => v.toStringAsFixed(3)).join(','));
       }
@@ -352,6 +359,18 @@ class SequencerModel extends ChangeNotifier {
     _save();
   }
 
+  Future<void> setStretch(int track, double ratio) async {
+    await _audio.setStretch(track, ratio);
+    notifyListeners();
+    _save();
+  }
+
+  Future<void> clearStretch(int track) async {
+    await _audio.clearStretch(track);
+    notifyListeners();
+    _save();
+  }
+
   void toggleMute(int track) {
     _audio.setMuted(track, !_audio.isMuted(track));
     notifyListeners();
@@ -386,8 +405,16 @@ class SequencerModel extends ChangeNotifier {
         numLoops: numLoops,
         outputPath: outputPath,
       );
-  Future<void> previewTrim(int track, Duration start, Duration? end) =>
-      _audio.previewTrim(track, start, end);
+  Future<String?> computePreviewStretch(int track, double ratio) =>
+      _audio.computePreviewStretch(track, ratio);
+
+  Future<void> previewTrim(
+    int track,
+    Duration start,
+    Duration? end, {
+    String? previewPath,
+  }) =>
+      _audio.previewTrim(track, start, end, previewPath: previewPath);
   Future<void> stopTrack(int track) => _audio.stopTrack(track);
   Stream<Duration> get positionStream => _audio.positionStream;
 

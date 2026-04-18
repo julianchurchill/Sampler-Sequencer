@@ -136,6 +136,7 @@ class _TrackSettingsSheet extends StatelessWidget {
       context: context,
       backgroundColor: kPanelColor,
       isScrollControlled: true,
+      enableDrag: false,
       shape: const RoundedRectangleBorder(
         borderRadius: BorderRadius.vertical(top: Radius.circular(12)),
       ),
