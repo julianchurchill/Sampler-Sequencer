@@ -590,15 +590,18 @@ class _RecordSectionState extends State<_RecordSection> {
     _saving = true;
     final pathToSave = _tempPath!;
     _tempPath = null;
-    Navigator.pop(dialogCtx);
     try {
+      Navigator.pop(dialogCtx);
       await context.read<SampleLibrary>().addRecording(pathToSave, name);
-    } catch (e) {
-      if (mounted) {
-        ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(content: Text('Failed to save recording: $e')),
-        );
-      }
+    } catch (e, st) {
+      debugPrint('_saveRecording error: $e\n$st');
+      try {
+        if (mounted) {
+          ScaffoldMessenger.of(context).showSnackBar(
+            const SnackBar(content: Text('Failed to save recording')),
+          );
+        }
+      } catch (_) {}
     } finally {
       if (mounted) setState(() => _saving = false);
     }
