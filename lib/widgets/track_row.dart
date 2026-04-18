@@ -86,6 +86,7 @@ class _TrackLabel extends StatelessWidget {
       context: context,
       backgroundColor: kPanelColor,
       isScrollControlled: true,
+      enableDrag: false,
       shape: const RoundedRectangleBorder(
         borderRadius: BorderRadius.vertical(top: Radius.circular(12)),
       ),
@@ -114,6 +115,7 @@ class _TrackSettingsSheet extends StatelessWidget {
       context: context,
       backgroundColor: kPanelColor,
       isScrollControlled: true,
+      enableDrag: false,
       constraints: BoxConstraints(
         maxHeight: MediaQuery.of(context).size.height * 0.75,
       ),
@@ -136,6 +138,7 @@ class _TrackSettingsSheet extends StatelessWidget {
       context: context,
       backgroundColor: kPanelColor,
       isScrollControlled: true,
+      enableDrag: false,
       shape: const RoundedRectangleBorder(
         borderRadius: BorderRadius.vertical(top: Radius.circular(12)),
       ),
@@ -153,9 +156,12 @@ class _TrackSettingsSheet extends StatelessWidget {
     final volume = model.trackVolume(trackIndex);
     final hasCustom = model.hasCustomSample(trackIndex);
     final hasTrim = model.hasTrim(trackIndex);
+    final stretchRatio = model.stretchRatio(trackIndex);
+    final hasStretch = (stretchRatio - 1.0).abs() >= 0.005;
+    final hasManipulation = hasTrim || hasStretch;
     final soundName = model.trackName(trackIndex);
 
-    String trimLabel = 'No trim';
+    final manipulateParts = <String>[];
     if (hasTrim) {
       final s = model.trimStart(trackIndex);
       final e = model.trimEnd(trackIndex);
@@ -163,8 +169,13 @@ class _TrackSettingsSheet extends StatelessWidget {
         final ms = d.inMilliseconds;
         return '${ms ~/ 1000}.${((ms % 1000) ~/ 10).toString().padLeft(2, '0')}s';
       }
-      trimLabel = e != null ? '${fmt(s)} – ${fmt(e)}' : '${fmt(s)} – end';
+      manipulateParts.add(e != null ? '${fmt(s)} – ${fmt(e)}' : '${fmt(s)} – end');
     }
+    if (hasStretch) {
+      manipulateParts.add('${stretchRatio.toStringAsFixed(2)}×');
+    }
+    final manipulateLabel =
+        manipulateParts.isEmpty ? 'No edits' : manipulateParts.join('  ');
 
     return Padding(
       padding: const EdgeInsets.fromLTRB(16, 16, 16, 32),
@@ -173,14 +184,27 @@ class _TrackSettingsSheet extends StatelessWidget {
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
           // Header
-          Text(
-            model.trackName(trackIndex).toUpperCase(),
-            style: TextStyle(
-              color: color,
-              fontSize: 11,
-              fontWeight: FontWeight.w800,
-              letterSpacing: 1.5,
-            ),
+          Row(
+            mainAxisAlignment: MainAxisAlignment.spaceBetween,
+            children: [
+              Text(
+                model.trackName(trackIndex).toUpperCase(),
+                style: TextStyle(
+                  color: color,
+                  fontSize: 11,
+                  fontWeight: FontWeight.w800,
+                  letterSpacing: 1.5,
+                ),
+              ),
+              IconButton(
+                onPressed: () => Navigator.pop(context),
+                icon: const Icon(Icons.close, size: 18),
+                color: kTextDim,
+                padding: EdgeInsets.zero,
+                constraints: const BoxConstraints(),
+                tooltip: 'Close',
+              ),
+            ],
           ),
           const SizedBox(height: 20),
 
@@ -246,16 +270,16 @@ class _TrackSettingsSheet extends StatelessWidget {
           ),
           const SizedBox(height: 20),
 
-          // ── Trim ─────────────────────────────────────────────────────
-          const _SectionLabel(label: 'TRIM'),
+          // ── Manipulate ───────────────────────────────────────────────
+          const _SectionLabel(label: 'MANIPULATE'),
           const SizedBox(height: 8),
           Row(
             children: [
               Expanded(
                 child: Text(
-                  trimLabel,
+                  manipulateLabel,
                   style: TextStyle(
-                    color: hasTrim ? Colors.white : kTextDim,
+                    color: hasManipulation ? Colors.white : kTextDim,
                     fontSize: 12,
                   ),
                 ),
@@ -263,15 +287,19 @@ class _TrackSettingsSheet extends StatelessWidget {
               const SizedBox(width: 8),
               _SmallButton(
                 label: 'EDIT',
-                color: hasTrim ? color : kTextDim,
+                color: hasManipulation ? color : kTextDim,
                 onTap: () => _openTrimEditor(context),
               ),
-              if (hasTrim) ...[
+              if (hasManipulation) ...[
                 const SizedBox(width: 6),
                 _SmallButton(
                   label: '×',
                   color: kTextDim,
-                  onTap: () => context.read<SequencerModel>().clearTrim(trackIndex),
+                  onTap: () {
+                    final m = context.read<SequencerModel>();
+                    m.clearTrim(trackIndex);
+                    m.clearStretch(trackIndex);
+                  },
                 ),
               ],
             ],
@@ -356,14 +384,27 @@ class _SoundPickerSheetState extends State<_SoundPickerSheet> {
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
           // ---- Title ----
-          Text(
-            'SELECT SOUND',
-            style: TextStyle(
-              color: color,
-              fontSize: 11,
-              fontWeight: FontWeight.w800,
-              letterSpacing: 1.5,
-            ),
+          Row(
+            mainAxisAlignment: MainAxisAlignment.spaceBetween,
+            children: [
+              Text(
+                'SELECT SOUND',
+                style: TextStyle(
+                  color: color,
+                  fontSize: 11,
+                  fontWeight: FontWeight.w800,
+                  letterSpacing: 1.5,
+                ),
+              ),
+              IconButton(
+                onPressed: () => Navigator.pop(context),
+                icon: const Icon(Icons.close, size: 18),
+                color: kTextDim,
+                padding: EdgeInsets.zero,
+                constraints: const BoxConstraints(),
+                tooltip: 'Close',
+              ),
+            ],
           ),
           const SizedBox(height: 12),
 

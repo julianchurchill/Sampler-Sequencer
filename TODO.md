@@ -6,13 +6,13 @@
 
 ## General
 
-- [ ] normalise sample automatically after recording
+- [x] normalise sample automatically after recording
 - [x] custom time signatures e.g. 9/8. User can change by tapping the time signature in the transport bar; pad layout reflects the new signature
 
 ## UI
 
-- [ ] show waveform of original sample when trimming
 - [x] hide the version number display behind a (i), click it to show overlay of version details. include the build timestamp in the version number display
+- [x] show waveform of original sample when trimming
 
 ## Developer
 

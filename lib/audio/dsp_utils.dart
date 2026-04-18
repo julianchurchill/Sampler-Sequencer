@@ -53,6 +53,37 @@ Uint8List buildWav(Float64List samples, int sampleRate) {
 double dspEnv(int i, int totalSamples, double decayRate) =>
     math.exp(-decayRate * i / totalSamples);
 
+/// Downsamples [samples] into [numBins] peak amplitude values, normalized 0.0–1.0.
+///
+/// Each bin covers an equal slice of PCM frames. The value for each bin is the
+/// maximum absolute sample value across all channels in that slice, divided by
+/// 32767 (Int16 max). Used to render a waveform overview in the trim editor.
+Float64List extractWaveformPeaks(
+    Int16List samples, int numChannels, int numBins) {
+  if (numBins <= 0) return Float64List(0);
+  if (samples.isEmpty || numChannels <= 0) return Float64List(numBins);
+  final numFrames = samples.length ~/ numChannels;
+  if (numFrames == 0) return Float64List(numBins);
+  final result = Float64List(numBins);
+  for (int bin = 0; bin < numBins; bin++) {
+    final startFrame = (bin * numFrames / numBins).floor();
+    final endFrame =
+        ((bin + 1) * numFrames / numBins).ceil().clamp(startFrame + 1, numFrames);
+    double peak = 0.0;
+    for (int frame = startFrame; frame < endFrame; frame++) {
+      for (int ch = 0; ch < numChannels; ch++) {
+        final idx = frame * numChannels + ch;
+        if (idx < samples.length) {
+          final val = samples[idx].abs() / 32767.0;
+          if (val > peak) peak = val;
+        }
+      }
+    }
+    result[bin] = peak;
+  }
+  return result;
+}
+
 // ---------------------------------------------------------------------------
 // Synthesised drum generators
 //

@@ -5,6 +5,49 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [2.7.0] - 2026-04-18
+
+### Added
+- Recordings are now peak-normalised to 0.98× on save, so every captured
+  sample lands at a consistent volume regardless of how close the mic was.
+  Non-WAV recordings (e.g. AAC) are saved as-is unchanged.
+
+### Fixed
+- Time-stretching no longer changes the perceived volume of the sample.
+  The phase vocoder was normalising output to 0.98× peak even when the
+  input was quiet, causing a level jump when switching back to 1.0×.
+  It now only scales down to prevent clipping (peak > 1.0), never boosts.
+
+## [2.6.1] - 2026-04-18
+
+### Fixed
+- Intermittent "Unable to read sample duration" when opening the trim dialog
+  quickly after a trim change or time stretch.  The shared preview AudioPlayer
+  could be mid-stop from a closing session when the new session called
+  `getTrackDuration`, causing a concurrent-access failure.  Duration is now
+  computed directly from the WAV header (already read for waveform peaks),
+  eliminating the AudioPlayer dependency for all preset and stretched samples.
+- Trim points were set against the old sample duration when APPLY was pressed
+  with both a new stretch ratio and new trim positions; they are now computed
+  relative to the new stretched duration.
+
+## [2.6.0] - 2026-04-17
+
+### Added
+- Phase-vocoder time stretching in the sample editor: a STRETCH slider (0.10×–5.0×)
+  with a logarithmic curve centred on 1.0× lets you independently lengthen or shorten
+  any sample without changing its pitch.  Stretch is applied to the full sample before
+  trim, supports stereo files, and is preserved across app restarts.  The APPLY button
+  shows a spinner while the stretch WAV is being computed in a background isolate.
+
+## [2.5.0] - 2026-04-17
+
+### Added
+- Waveform display in the trim editor: the full sample waveform is now rendered
+  above the range slider, with the selected trim region highlighted in the track
+  colour and the remainder dimmed.  A white playhead line sweeps across the
+  waveform during preview playback.
+
 ## [2.4.0] - 2026-04-10
 
 ### Added

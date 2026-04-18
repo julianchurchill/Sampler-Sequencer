@@ -1,10 +1,36 @@
 import 'dart:async';
+import 'dart:math' as math;
+import 'dart:typed_data';
 
 import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
 
+import '../audio/dsp_utils.dart';
+import '../audio/wav_io.dart';
 import '../constants.dart';
 import '../models/sequencer_model.dart';
+
+/// Number of amplitude bins computed from the PCM data for waveform display.
+const int _kWaveformBins = 400;
+
+/// Maps a linear slider value [v] in [0, 1] to a stretch ratio in [0.1, 5.0]
+/// using a two-segment exponential curve symmetric around 1.0× at v = 0.5.
+double _sliderToRatio(double v) {
+  if (v <= 0.5) {
+    return 0.1 * math.pow(10.0, v * 2.0);
+  } else {
+    return math.pow(5.0, (v - 0.5) * 2.0).toDouble();
+  }
+}
+
+/// Inverse of [_sliderToRatio].
+double _ratioToSlider(double r) {
+  if (r <= 1.0) {
+    return math.log(r / 0.1) / math.log(10.0) * 0.5;
+  } else {
+    return 0.5 + math.log(r) / math.log(5.0) * 0.5;
+  }
+}
 
 /// Bottom sheet for non-destructive trim of the sample assigned to [trackIndex].
 /// Presents a RangeSlider over the full sample duration and shows the selected
@@ -30,6 +56,22 @@ class _TrimEditorSheetState extends State<TrimEditorSheet> {
   double _startFrac = 0.0;
   double _endFrac = 1.0;
 
+  // Waveform peak bins — null until PCM has been read.
+  Float64List? _waveformPeaks;
+
+  // Stretch slider position (0.0–1.0 → 0.1×–5.0×, 0.5 = 1.0×).
+  double _stretchSlider = 0.5;
+
+  // The stretch ratio already baked into the loaded sample (from the model).
+  // Used to compute display durations relative to the current slider position.
+  double _appliedStretchRatio = 1.0;
+
+  // True while a preview stretch is being computed in the background.
+  bool _previewLoading = false;
+
+  // True while the APPLY action is computing the stretched WAV.
+  bool _applying = false;
+
   @override
   void initState() {
     super.initState();
@@ -40,26 +82,51 @@ class _TrimEditorSheetState extends State<TrimEditorSheet> {
   void dispose() {
     _positionSub?.cancel();
     _previewTimer?.cancel();
-    // Stop any ongoing preview when the sheet closes.
-    if (_previewing) {
-      context.read<SequencerModel>().stopTrack(widget.trackIndex);
-    }
+    // Always stop — even if the UI timer already reset _previewing to false,
+    // AudioEngine._previewPlaying may still be true (no auto-reset when
+    // end == null), which blocks the next getTrackDuration call.
+    context.read<SequencerModel>().stopTrack(widget.trackIndex);
     super.dispose();
   }
 
   Future<void> _loadDuration() async {
     final model = context.read<SequencerModel>();
-    final dur = await model.getTrackDuration(widget.trackIndex);
+    final path = model.samplePath(widget.trackIndex);
+    // Read WAV directly — computing duration from the header avoids using the
+    // shared _previewPlayer, which can be mid-stop from a previous session and
+    // return null under concurrent access (the intermittent "Unable to read
+    // sample duration" race).  Falls back to getTrackDuration only for non-WAV
+    // custom files that readWav can't parse.
+    final wavData = await readWav(path);
     if (!mounted) return;
+
+    Duration? dur;
+    if (wavData != null && wavData.sampleRate > 0 && wavData.numFrames > 0) {
+      dur = Duration(
+        milliseconds: (wavData.numFrames / wavData.sampleRate * 1000).round(),
+      );
+    } else {
+      dur = await model.getTrackDuration(widget.trackIndex);
+      if (!mounted) return;
+    }
+
     setState(() {
       _duration = dur;
       _loading = false;
+      if (wavData != null) {
+        _waveformPeaks = extractWaveformPeaks(
+            wavData.samples, wavData.numChannels, _kWaveformBins);
+      }
       if (dur != null && dur.inMilliseconds > 0) {
         final startMs = model.trimStart(widget.trackIndex).inMilliseconds;
-        final endMs = model.trimEnd(widget.trackIndex)?.inMilliseconds ?? dur.inMilliseconds;
+        final endMs =
+            model.trimEnd(widget.trackIndex)?.inMilliseconds ?? dur.inMilliseconds;
         _startFrac = (startMs / dur.inMilliseconds).clamp(0.0, 1.0);
         _endFrac = (endMs / dur.inMilliseconds).clamp(0.0, 1.0);
       }
+      _appliedStretchRatio = model.stretchRatio(widget.trackIndex);
+      _stretchSlider =
+          _ratioToSlider(_appliedStretchRatio).clamp(0.0, 1.0);
     });
   }
 
@@ -79,15 +146,6 @@ class _TrimEditorSheetState extends State<TrimEditorSheet> {
     if (mounted) setState(() { _previewing = false; _playProgress = 0.0; });
   }
 
-  /// Returns the effective trim-end in milliseconds.
-  ///
-  /// If [endFrac] maps to a position before the sample end it is used as-is;
-  /// otherwise the full sample duration is used (i.e. "play to end").
-  int _effectiveEndMs(double endFrac, Duration dur) {
-    final endMs = (endFrac * dur.inMilliseconds).round();
-    return endMs < dur.inMilliseconds ? endMs : dur.inMilliseconds;
-  }
-
   Future<void> _togglePreview() async {
     final dur = _duration;
     if (dur == null) return;
@@ -98,16 +156,33 @@ class _TrimEditorSheetState extends State<TrimEditorSheet> {
     }
 
     final model = context.read<SequencerModel>();
-    final startMs = (_startFrac * dur.inMilliseconds).round();
-    final endMs = (_endFrac * dur.inMilliseconds).round();
+    final newRatio = _sliderToRatio(_stretchSlider);
+    final displayScale =
+        _appliedStretchRatio > 0 ? newRatio / _appliedStretchRatio : 1.0;
+    final displayDurMs = (dur.inMilliseconds * displayScale).round();
+
+    final startMs = (_startFrac * displayDurMs).round();
+    final endMs = (_endFrac * displayDurMs).round();
     final start = Duration(milliseconds: startMs);
-    final end = endMs < dur.inMilliseconds ? Duration(milliseconds: endMs) : null;
-    final effectiveEndMs = _effectiveEndMs(_endFrac, dur);
-    final trimDurationMs = effectiveEndMs - startMs;
+    final end = endMs < displayDurMs ? Duration(milliseconds: endMs) : null;
+    final trimDurationMs = (end != null ? endMs : displayDurMs) - startMs;
+
+    // If the slider has moved from the applied ratio, compute a preview
+    // stretch so the user hears the new setting before pressing APPLY.
+    String? previewPath;
+    if ((newRatio - _appliedStretchRatio).abs() > 0.005) {
+      setState(() => _previewLoading = true);
+      try {
+        previewPath = await model.computePreviewStretch(widget.trackIndex, newRatio);
+      } finally {
+        if (mounted) setState(() => _previewLoading = false);
+      }
+      if (!mounted || previewPath == null) return;
+    }
 
     setState(() { _previewing = true; _playProgress = 0.0; });
 
-    // Subscribe to position updates for the progress bar.
+    // Subscribe to position updates for the waveform playhead.
     _positionSub?.cancel();
     _positionSub = model.positionStream.listen((pos) {
       if (!mounted || trimDurationMs <= 0) return;
@@ -125,32 +200,71 @@ class _TrimEditorSheetState extends State<TrimEditorSheet> {
       if (mounted) setState(() { _previewing = false; _playProgress = 0.0; });
     });
 
-    await model.previewTrim(widget.trackIndex, start, end);
+    await model.previewTrim(widget.trackIndex, start, end, previewPath: previewPath);
   }
 
-  void _applyTrim() {
-    final model = context.read<SequencerModel>();
-    final dur = _duration;
-    if (dur == null) return;
-    final startMs = (_startFrac * dur.inMilliseconds).round();
-    final endMs = _effectiveEndMs(_endFrac, dur);
-    final isFullRange = startMs <= 0 && endMs >= dur.inMilliseconds;
-    if (isFullRange) {
-      model.clearTrim(widget.trackIndex);
-    } else {
-      model.setTrim(
-        widget.trackIndex,
-        Duration(milliseconds: startMs),
-        endMs < dur.inMilliseconds ? Duration(milliseconds: endMs) : null,
-      );
+  Future<void> _apply() async {
+    if (_applying) return;
+    setState(() => _applying = true);
+    if (_previewing) _stopPreview();
+
+    try {
+      final model = context.read<SequencerModel>();
+      final dur = _duration;
+      if (dur != null) {
+        // Use displayDurMs so trim positions are relative to the NEW stretch
+        // duration, not the currently-loaded file's duration.  Without this,
+        // changing both trim and stretch in one APPLY would set trim points
+        // against the old sample length.
+        final newRatio = _sliderToRatio(_stretchSlider);
+        final displayScale =
+            _appliedStretchRatio > 0 ? newRatio / _appliedStretchRatio : 1.0;
+        final displayDurMs = (dur.inMilliseconds * displayScale).round();
+        final startMs = (_startFrac * displayDurMs).round();
+        final endMs = (_endFrac * displayDurMs).round();
+        if (startMs <= 0 && endMs >= displayDurMs) {
+          model.clearTrim(widget.trackIndex);
+        } else {
+          model.setTrim(
+            widget.trackIndex,
+            Duration(milliseconds: startMs),
+            endMs < displayDurMs ? Duration(milliseconds: endMs) : null,
+          );
+        }
+      }
+
+      final ratio = _sliderToRatio(_stretchSlider);
+      if ((ratio - 1.0).abs() < 0.005) {
+        await model.clearStretch(widget.trackIndex);
+      } else {
+        await model.setStretch(widget.trackIndex, ratio);
+      }
+
+      if (mounted) Navigator.pop(context);
+    } catch (e) {
+      debugPrint('TrimEditorSheet _apply error: $e');
+      if (mounted) {
+        setState(() => _applying = false);
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(content: Text('Failed to apply stretch — try again')),
+        );
+      }
     }
-    Navigator.pop(context);
   }
 
   @override
   Widget build(BuildContext context) {
     final color = kTrackColors[widget.trackIndex];
     final dur = _duration;
+
+    // Scale displayed durations by the ratio of the current slider to the
+    // already-applied stretch, so labels update live as the slider is dragged.
+    final displayScale = dur != null && _appliedStretchRatio > 0
+        ? _sliderToRatio(_stretchSlider) / _appliedStretchRatio
+        : 1.0;
+    final displayDurMs = dur != null
+        ? (dur.inMilliseconds * displayScale).round()
+        : 0;
 
     return Padding(
       padding: const EdgeInsets.fromLTRB(16, 16, 16, 24),
@@ -177,142 +291,193 @@ class _TrimEditorSheetState extends State<TrimEditorSheet> {
               style: TextStyle(color: Colors.white54, fontSize: 12),
             )
           else ...[
+            // Waveform with trim slider overlaid — the track is transparent so
+            // only the thumb circles float on the waveform.  Saves the vertical
+            // space a separate RangeSlider would occupy.
+            SizedBox(
+              height: 80,
+              child: Stack(
+                children: [
+                  CustomPaint(
+                    painter: _WaveformPainter(
+                      peaks: _waveformPeaks ?? Float64List(0),
+                      startFrac: _startFrac,
+                      endFrac: _endFrac,
+                      playheadFrac: _previewing
+                          ? _startFrac + _playProgress * (_endFrac - _startFrac)
+                          : null,
+                      color: color,
+                    ),
+                    size: Size.infinite,
+                  ),
+                  SliderTheme(
+                    data: SliderTheme.of(context).copyWith(
+                      trackHeight: 0,
+                      rangeThumbShape: const RoundRangeSliderThumbShape(
+                        enabledThumbRadius: 8,
+                      ),
+                      activeTrackColor: Colors.transparent,
+                      inactiveTrackColor: Colors.transparent,
+                      thumbColor: color,
+                      overlayColor: color.withValues(alpha: 0.15),
+                    ),
+                    child: RangeSlider(
+                      values: RangeValues(_startFrac, _endFrac),
+                      onChanged: (v) {
+                        if (_previewing) _stopPreview();
+                        setState(() {
+                          _startFrac = v.start;
+                          _endFrac = v.end;
+                        });
+                      },
+                    ),
+                  ),
+                ],
+              ),
+            ),
+            const SizedBox(height: 4),
+
             // Time labels
             Row(
               mainAxisAlignment: MainAxisAlignment.spaceBetween,
               children: [
                 Text(
-                  'Start: ${_fmt(Duration(milliseconds: (_startFrac * dur.inMilliseconds).round()))}',
+                  'Start: ${_fmt(Duration(milliseconds: (_startFrac * displayDurMs).round()))}',
                   style: const TextStyle(color: Colors.white, fontSize: 12),
                 ),
                 Text(
-                  'End: ${_fmt(Duration(milliseconds: (_endFrac * dur.inMilliseconds).round()))}',
+                  'End: ${_fmt(Duration(milliseconds: (_endFrac * displayDurMs).round()))}',
                   style: const TextStyle(color: Colors.white, fontSize: 12),
                 ),
               ],
             ),
-            const SizedBox(height: 4),
-
-            // Range slider
-            SliderTheme(
-              data: SliderTheme.of(context).copyWith(
-                trackHeight: 4,
-                rangeThumbShape: const RoundRangeSliderThumbShape(
-                  enabledThumbRadius: 8,
-                ),
-                activeTrackColor: color,
-                inactiveTrackColor: color.withValues(alpha: 0.2),
-                thumbColor: color,
-                overlayColor: color.withValues(alpha: 0.15),
-              ),
-              child: RangeSlider(
-                values: RangeValues(_startFrac, _endFrac),
-                onChanged: (v) {
-                  // Stop any active preview when the user adjusts the range.
-                  if (_previewing) _stopPreview();
-                  setState(() {
-                    _startFrac = v.start;
-                    _endFrac = v.end;
-                  });
-                },
-              ),
-            ),
-
-            // Playback progress indicator
-            const SizedBox(height: 4),
-            LayoutBuilder(
-                builder: (context, constraints) {
-                  final w = constraints.maxWidth;
-                  final indicatorX = (_playProgress * w).clamp(0.0, w);
-                  return SizedBox(
-                    height: 16,
-                    child: Stack(
-                      clipBehavior: Clip.none,
-                      children: [
-                        Positioned(
-                          left: 0,
-                          right: 0,
-                          top: 7,
-                          child: Container(
-                            height: 2,
-                            color: color.withValues(alpha: 0.25),
-                          ),
-                        ),
-                        Positioned(
-                          left: 0,
-                          width: indicatorX,
-                          top: 7,
-                          child: Container(
-                            height: 2,
-                            color: color.withValues(alpha: 0.7),
-                          ),
-                        ),
-                        Positioned(
-                          left: (indicatorX - 6).clamp(0.0, w - 12),
-                          top: 1,
-                          child: Container(
-                            width: 12,
-                            height: 12,
-                            decoration: BoxDecoration(
-                              color: color,
-                              shape: BoxShape.circle,
-                            ),
-                          ),
-                        ),
-                      ],
-                    ),
-                  );
-                },
-              ),
 
             // Total duration label + preview button
             Row(
               mainAxisAlignment: MainAxisAlignment.spaceBetween,
               children: [
                 Text(
-                  'Total: ${_fmt(dur)}',
+                  'Total: ${_fmt(Duration(milliseconds: displayDurMs))}',
                   style: const TextStyle(color: Colors.white54, fontSize: 11),
                 ),
-                IconButton(
-                  onPressed: _togglePreview,
-                  tooltip: _previewing ? 'Pause preview' : 'Preview trimmed sample',
-                  color: color,
-                  icon: Icon(
-                    _previewing ? Icons.pause_circle_outline : Icons.play_circle_outline,
-                  ),
-                ),
+                _previewLoading
+                    ? SizedBox(
+                        width: 48,
+                        height: 48,
+                        child: Center(
+                          child: SizedBox(
+                            width: 20,
+                            height: 20,
+                            child: CircularProgressIndicator(
+                                strokeWidth: 2, color: color),
+                          ),
+                        ),
+                      )
+                    : IconButton(
+                        onPressed: _togglePreview,
+                        tooltip: _previewing
+                            ? 'Pause preview'
+                            : 'Preview trimmed sample',
+                        color: color,
+                        icon: Icon(
+                          _previewing
+                              ? Icons.pause_circle_outline
+                              : Icons.play_circle_outline,
+                        ),
+                      ),
               ],
             ),
 
             const SizedBox(height: 8),
+            const Divider(color: Colors.white12),
+            const SizedBox(height: 4),
+
+            // Stretch section
+            Text(
+              'STRETCH',
+              style: TextStyle(
+                color: color,
+                fontSize: 11,
+                fontWeight: FontWeight.w800,
+                letterSpacing: 1.5,
+              ),
+            ),
+            const SizedBox(height: 8),
+            Row(
+              mainAxisAlignment: MainAxisAlignment.spaceBetween,
+              children: [
+                Text(
+                  '${_sliderToRatio(_stretchSlider).toStringAsFixed(2)}×',
+                  style: const TextStyle(
+                      color: Colors.white, fontSize: 13, fontWeight: FontWeight.w600),
+                ),
+                Text(
+                  'Stretched: ${_fmt(Duration(milliseconds: displayDurMs))}',
+                  style: const TextStyle(color: Colors.white54, fontSize: 11),
+                ),
+              ],
+            ),
+            SliderTheme(
+              data: SliderTheme.of(context).copyWith(
+                trackHeight: 4,
+                activeTrackColor: color,
+                inactiveTrackColor: color.withValues(alpha: 0.2),
+                thumbColor: color,
+                overlayColor: color.withValues(alpha: 0.15),
+              ),
+              child: Slider(
+                value: _stretchSlider,
+                onChanged: (v) => setState(() => _stretchSlider = v),
+              ),
+            ),
+
+            const SizedBox(height: 4),
 
             Row(
               mainAxisAlignment: MainAxisAlignment.end,
               children: [
                 TextButton(
-                  onPressed: () {
-                    if (_previewing) _stopPreview();
-                    setState(() {
-                      _startFrac = 0.0;
-                      _endFrac = 1.0;
-                    });
-                  },
+                  onPressed: _applying
+                      ? null
+                      : () {
+                          if (_previewing) _stopPreview();
+                          setState(() {
+                            _startFrac = 0.0;
+                            _endFrac = 1.0;
+                            _stretchSlider = 0.5;
+                          });
+                        },
                   child: const Text('RESET', style: TextStyle(color: Colors.white54)),
                 ),
                 const SizedBox(width: 8),
                 TextButton(
-                  onPressed: () => Navigator.pop(context),
+                  onPressed: _applying ? null : () => Navigator.pop(context),
                   child: const Text('CANCEL', style: TextStyle(color: Colors.white54)),
                 ),
                 const SizedBox(width: 8),
-                ElevatedButton(
-                  style: ElevatedButton.styleFrom(
-                    backgroundColor: color,
-                    foregroundColor: Colors.black,
-                  ),
-                  onPressed: _applyTrim,
-                  child: const Text('APPLY'),
-                ),
+                _applying
+                    ? SizedBox(
+                        width: 72,
+                        height: 36,
+                        child: Center(
+                          child: SizedBox(
+                            width: 20,
+                            height: 20,
+                            child: CircularProgressIndicator(
+                              strokeWidth: 2,
+                              color: color,
+                            ),
+                          ),
+                        ),
+                      )
+                    : ElevatedButton(
+                        style: ElevatedButton.styleFrom(
+                          backgroundColor: color,
+                          foregroundColor: Colors.black,
+                        ),
+                        onPressed: _apply,
+                        child: const Text('APPLY'),
+                      ),
               ],
             ),
           ],
@@ -320,4 +485,63 @@ class _TrimEditorSheetState extends State<TrimEditorSheet> {
       ),
     );
   }
+}
+
+class _WaveformPainter extends CustomPainter {
+  _WaveformPainter({
+    required this.peaks,
+    required this.startFrac,
+    required this.endFrac,
+    required this.color,
+    this.playheadFrac,
+  });
+
+  final Float64List peaks;
+  final double startFrac;
+  final double endFrac;
+  final Color color;
+  final double? playheadFrac;
+
+  @override
+  void paint(Canvas canvas, Size size) {
+    if (peaks.isEmpty || size.width <= 0 || size.height <= 0) return;
+    final midY = size.height / 2;
+    final binWidth = size.width / peaks.length;
+
+    for (int i = 0; i < peaks.length; i++) {
+      final x = (i + 0.5) * binWidth;
+      final frac = i / peaks.length;
+      final isActive = frac >= startFrac && frac < endFrac;
+      final h = (peaks[i] * midY).clamp(1.0, midY);
+      canvas.drawLine(
+        Offset(x, midY - h),
+        Offset(x, midY + h),
+        Paint()
+          ..color = isActive
+              ? color.withValues(alpha: 0.85)
+              : color.withValues(alpha: 0.2)
+          ..strokeWidth = binWidth.clamp(1.0, 3.0)
+          ..strokeCap = StrokeCap.round,
+      );
+    }
+
+    if (playheadFrac != null) {
+      final x = (playheadFrac! * size.width).clamp(0.0, size.width);
+      canvas.drawLine(
+        Offset(x, 0),
+        Offset(x, size.height),
+        Paint()
+          ..color = Colors.white
+          ..strokeWidth = 1.5,
+      );
+    }
+  }
+
+  @override
+  bool shouldRepaint(_WaveformPainter old) =>
+      peaks != old.peaks ||
+      startFrac != old.startFrac ||
+      endFrac != old.endFrac ||
+      playheadFrac != old.playheadFrac ||
+      color != old.color;
 }
