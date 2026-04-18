@@ -504,28 +504,46 @@ class _RecordSectionState extends State<_RecordSection> {
   }
 
   Future<void> _startRecording() async {
-    final hasPermission = await _recorder.hasPermission();
-    if (!hasPermission) {
+    try {
+      final hasPermission = await _recorder.hasPermission();
+      if (!hasPermission) {
+        if (mounted) {
+          ScaffoldMessenger.of(context).showSnackBar(
+            const SnackBar(content: Text('Microphone permission denied')),
+          );
+        }
+        return;
+      }
+      final tmp = await getTemporaryDirectory();
+      final path =
+          '${tmp.path}/rec_${DateTime.now().millisecondsSinceEpoch}.wav';
+      await _recorder.start(path);
+      if (mounted) setState(() => _recordState = _RecordState.recording);
+    } catch (e) {
       if (mounted) {
         ScaffoldMessenger.of(context).showSnackBar(
-          const SnackBar(content: Text('Microphone permission denied')),
+          SnackBar(content: Text('Failed to start recording: $e')),
         );
       }
-      return;
     }
-    final tmp = await getTemporaryDirectory();
-    final path =
-        '${tmp.path}/rec_${DateTime.now().millisecondsSinceEpoch}.wav';
-    await _recorder.start(path);
-    if (mounted) setState(() => _recordState = _RecordState.recording);
   }
 
   Future<void> _stopRecording() async {
-    final path = await _recorder.stop();
-    if (mounted) setState(() => _recordState = _RecordState.idle);
-    if (path != null) {
-      _tempPath = path;
-      _promptForName();
+    try {
+      final path = await _recorder.stop();
+      if (!mounted) return;
+      setState(() => _recordState = _RecordState.idle);
+      if (path != null) {
+        _tempPath = path;
+        _promptForName();
+      }
+    } catch (e) {
+      if (mounted) {
+        setState(() => _recordState = _RecordState.idle);
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(content: Text('Failed to stop recording: $e')),
+        );
+      }
     }
   }
 
