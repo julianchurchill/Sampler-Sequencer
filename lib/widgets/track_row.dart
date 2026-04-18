@@ -490,6 +490,7 @@ class _RecordSectionState extends State<_RecordSection> {
   _RecordState _recordState = _RecordState.idle;
   final _recorder = AppAudioRecorder();
   String? _tempPath;
+  bool _saving = false;
   final _nameController = TextEditingController();
 
   @override
@@ -533,6 +534,7 @@ class _RecordSectionState extends State<_RecordSection> {
     _nameController.text = 'Recording ${library.samples.length + 1}';
     showDialog<void>(
       context: context,
+      barrierDismissible: false,
       builder: (ctx) => AlertDialog(
         backgroundColor: kPanelColor,
         title: const Text('Name sample'),
@@ -566,10 +568,22 @@ class _RecordSectionState extends State<_RecordSection> {
 
   Future<void> _saveRecording(BuildContext dialogCtx) async {
     final name = _nameController.text.trim();
-    if (name.isEmpty || _tempPath == null) return;
-    Navigator.pop(dialogCtx);
-    await context.read<SampleLibrary>().addRecording(_tempPath!, name);
+    if (name.isEmpty || _tempPath == null || _saving) return;
+    _saving = true;
+    final pathToSave = _tempPath!;
     _tempPath = null;
+    Navigator.pop(dialogCtx);
+    try {
+      await context.read<SampleLibrary>().addRecording(pathToSave, name);
+    } catch (e) {
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(content: Text('Failed to save recording: $e')),
+        );
+      }
+    } finally {
+      if (mounted) setState(() => _saving = false);
+    }
   }
 
   @override
