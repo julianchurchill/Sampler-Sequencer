@@ -155,9 +155,12 @@ class _TrackSettingsSheet extends StatelessWidget {
     final volume = model.trackVolume(trackIndex);
     final hasCustom = model.hasCustomSample(trackIndex);
     final hasTrim = model.hasTrim(trackIndex);
+    final stretchRatio = model.stretchRatio(trackIndex);
+    final hasStretch = (stretchRatio - 1.0).abs() >= 0.005;
+    final hasManipulation = hasTrim || hasStretch;
     final soundName = model.trackName(trackIndex);
 
-    String trimLabel = 'No trim';
+    final manipulateParts = <String>[];
     if (hasTrim) {
       final s = model.trimStart(trackIndex);
       final e = model.trimEnd(trackIndex);
@@ -165,8 +168,13 @@ class _TrackSettingsSheet extends StatelessWidget {
         final ms = d.inMilliseconds;
         return '${ms ~/ 1000}.${((ms % 1000) ~/ 10).toString().padLeft(2, '0')}s';
       }
-      trimLabel = e != null ? '${fmt(s)} – ${fmt(e)}' : '${fmt(s)} – end';
+      manipulateParts.add(e != null ? '${fmt(s)} – ${fmt(e)}' : '${fmt(s)} – end');
     }
+    if (hasStretch) {
+      manipulateParts.add('${stretchRatio.toStringAsFixed(2)}×');
+    }
+    final manipulateLabel =
+        manipulateParts.isEmpty ? 'No edits' : manipulateParts.join('  ');
 
     return Padding(
       padding: const EdgeInsets.fromLTRB(16, 16, 16, 32),
@@ -248,16 +256,16 @@ class _TrackSettingsSheet extends StatelessWidget {
           ),
           const SizedBox(height: 20),
 
-          // ── Trim ─────────────────────────────────────────────────────
-          const _SectionLabel(label: 'TRIM'),
+          // ── Manipulate ───────────────────────────────────────────────
+          const _SectionLabel(label: 'MANIPULATE'),
           const SizedBox(height: 8),
           Row(
             children: [
               Expanded(
                 child: Text(
-                  trimLabel,
+                  manipulateLabel,
                   style: TextStyle(
-                    color: hasTrim ? Colors.white : kTextDim,
+                    color: hasManipulation ? Colors.white : kTextDim,
                     fontSize: 12,
                   ),
                 ),
@@ -265,15 +273,19 @@ class _TrackSettingsSheet extends StatelessWidget {
               const SizedBox(width: 8),
               _SmallButton(
                 label: 'EDIT',
-                color: hasTrim ? color : kTextDim,
+                color: hasManipulation ? color : kTextDim,
                 onTap: () => _openTrimEditor(context),
               ),
-              if (hasTrim) ...[
+              if (hasManipulation) ...[
                 const SizedBox(width: 6),
                 _SmallButton(
                   label: '×',
                   color: kTextDim,
-                  onTap: () => context.read<SequencerModel>().clearTrim(trackIndex),
+                  onTap: () {
+                    final m = context.read<SequencerModel>();
+                    m.clearTrim(trackIndex);
+                    m.clearStretch(trackIndex);
+                  },
                 ),
               ],
             ],
