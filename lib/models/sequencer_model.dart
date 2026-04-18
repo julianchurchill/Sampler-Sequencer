@@ -405,8 +405,16 @@ class SequencerModel extends ChangeNotifier {
         numLoops: numLoops,
         outputPath: outputPath,
       );
-  Future<void> previewTrim(int track, Duration start, Duration? end) =>
-      _audio.previewTrim(track, start, end);
+  Future<String?> computePreviewStretch(int track, double ratio) =>
+      _audio.computePreviewStretch(track, ratio);
+
+  Future<void> previewTrim(
+    int track,
+    Duration start,
+    Duration? end, {
+    String? previewPath,
+  }) =>
+      _audio.previewTrim(track, start, end, previewPath: previewPath);
   Future<void> stopTrack(int track) => _audio.stopTrack(track);
   Stream<Duration> get positionStream => _audio.positionStream;
 

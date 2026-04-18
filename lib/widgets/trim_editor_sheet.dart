@@ -66,6 +66,9 @@ class _TrimEditorSheetState extends State<TrimEditorSheet> {
   // Used to compute display durations relative to the current slider position.
   double _appliedStretchRatio = 1.0;
 
+  // True while a preview stretch is being computed in the background.
+  bool _previewLoading = false;
+
   // True while the APPLY action is computing the stretched WAV.
   bool _applying = false;
 
@@ -153,12 +156,29 @@ class _TrimEditorSheetState extends State<TrimEditorSheet> {
     }
 
     final model = context.read<SequencerModel>();
-    final startMs = (_startFrac * dur.inMilliseconds).round();
-    final endMs = (_endFrac * dur.inMilliseconds).round();
+    final newRatio = _sliderToRatio(_stretchSlider);
+    final displayScale =
+        _appliedStretchRatio > 0 ? newRatio / _appliedStretchRatio : 1.0;
+    final displayDurMs = (dur.inMilliseconds * displayScale).round();
+
+    final startMs = (_startFrac * displayDurMs).round();
+    final endMs = (_endFrac * displayDurMs).round();
     final start = Duration(milliseconds: startMs);
-    final end = endMs < dur.inMilliseconds ? Duration(milliseconds: endMs) : null;
-    final effectiveEndMs = _effectiveEndMs(_endFrac, dur);
-    final trimDurationMs = effectiveEndMs - startMs;
+    final end = endMs < displayDurMs ? Duration(milliseconds: endMs) : null;
+    final trimDurationMs = (end != null ? endMs : displayDurMs) - startMs;
+
+    // If the slider has moved from the applied ratio, compute a preview
+    // stretch so the user hears the new setting before pressing APPLY.
+    String? previewPath;
+    if ((newRatio - _appliedStretchRatio).abs() > 0.005) {
+      setState(() => _previewLoading = true);
+      try {
+        previewPath = await model.computePreviewStretch(widget.trackIndex, newRatio);
+      } finally {
+        if (mounted) setState(() => _previewLoading = false);
+      }
+      if (!mounted || previewPath == null) return;
+    }
 
     setState(() { _previewing = true; _playProgress = 0.0; });
 
@@ -180,7 +200,7 @@ class _TrimEditorSheetState extends State<TrimEditorSheet> {
       if (mounted) setState(() { _previewing = false; _playProgress = 0.0; });
     });
 
-    await model.previewTrim(widget.trackIndex, start, end);
+    await model.previewTrim(widget.trackIndex, start, end, previewPath: previewPath);
   }
 
   Future<void> _apply() async {
@@ -332,14 +352,31 @@ class _TrimEditorSheetState extends State<TrimEditorSheet> {
                   'Total: ${_fmt(Duration(milliseconds: displayDurMs))}',
                   style: const TextStyle(color: Colors.white54, fontSize: 11),
                 ),
-                IconButton(
-                  onPressed: _togglePreview,
-                  tooltip: _previewing ? 'Pause preview' : 'Preview trimmed sample',
-                  color: color,
-                  icon: Icon(
-                    _previewing ? Icons.pause_circle_outline : Icons.play_circle_outline,
-                  ),
-                ),
+                _previewLoading
+                    ? SizedBox(
+                        width: 48,
+                        height: 48,
+                        child: Center(
+                          child: SizedBox(
+                            width: 20,
+                            height: 20,
+                            child: CircularProgressIndicator(
+                                strokeWidth: 2, color: color),
+                          ),
+                        ),
+                      )
+                    : IconButton(
+                        onPressed: _togglePreview,
+                        tooltip: _previewing
+                            ? 'Pause preview'
+                            : 'Preview trimmed sample',
+                        color: color,
+                        icon: Icon(
+                          _previewing
+                              ? Icons.pause_circle_outline
+                              : Icons.play_circle_outline,
+                        ),
+                      ),
               ],
             ),
 

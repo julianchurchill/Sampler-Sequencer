@@ -465,6 +465,24 @@ class AudioEngine {
     }
   }
 
+  /// Compute a time-stretched preview of [track]'s original sample at [ratio]
+  /// without modifying any model state.  Returns the path to the resulting
+  /// temp WAV, or null on failure.  The output file is keyed on the original
+  /// path hash and ratio, so repeated previews of the same setting are free
+  /// (the file already exists and is simply overwritten with identical bytes).
+  Future<String?> computePreviewStretch(int track, double ratio) async {
+    final original = _originalPath(track);
+    final tempDir = await getTemporaryDirectory();
+    final pathHash = original.hashCode.abs();
+    final ratioStr = ratio.toStringAsFixed(3);
+    final outputPath =
+        '${tempDir.path}/sampler_preview_t${track}_${pathHash}_r$ratioStr.wav';
+    return compute(
+      stretchWavFile,
+      StretchArgs(inputPath: original, ratio: ratio, outputPath: outputPath),
+    );
+  }
+
   /// Remove stretch from [track]; sample reverts to its original duration.
   Future<void> clearStretch(int track) async {
     _stretchRatio[track] = 1.0;
@@ -541,12 +559,17 @@ class AudioEngine {
   ///
   /// Always uses [_previewPlayer] (mediaPlayer) so that seek() is available
   /// regardless of the sequencer player's current mode.
-  Future<void> previewTrim(int track, Duration start, Duration? end) async {
+  Future<void> previewTrim(
+    int track,
+    Duration start,
+    Duration? end, {
+    String? previewPath,
+  }) async {
     if (!_ready) return;
     final gen = ++_previewGen;
     _previewTimer?.cancel();
     _previewTimer = null;
-    final path = samplePath(track);
+    final path = previewPath ?? samplePath(track);
     try {
       await _previewPlayer.setVolume(0.0);
       if (_previewGen != gen) return;
