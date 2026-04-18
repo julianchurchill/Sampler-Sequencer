@@ -5,6 +5,19 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [2.6.1] - 2026-04-18
+
+### Fixed
+- Intermittent "Unable to read sample duration" when opening the trim dialog
+  quickly after a trim change or time stretch.  The shared preview AudioPlayer
+  could be mid-stop from a closing session when the new session called
+  `getTrackDuration`, causing a concurrent-access failure.  Duration is now
+  computed directly from the WAV header (already read for waveform peaks),
+  eliminating the AudioPlayer dependency for all preset and stretched samples.
+- Trim points were set against the old sample duration when APPLY was pressed
+  with both a new stretch ratio and new trim positions; they are now computed
+  relative to the new stretched duration.
+
 ## [2.6.0] - 2026-04-17
 
 ### Added

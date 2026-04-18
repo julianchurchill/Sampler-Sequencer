@@ -92,14 +92,23 @@ class _TrimEditorSheetState extends State<TrimEditorSheet> {
   Future<void> _loadDuration() async {
     final model = context.read<SequencerModel>();
     final path = model.samplePath(widget.trackIndex);
-    final results = await Future.wait([
-      model.getTrackDuration(widget.trackIndex),
-      readWav(path),
-    ]);
+    // Read WAV directly — computing duration from the header avoids using the
+    // shared _previewPlayer, which can be mid-stop from a previous session and
+    // return null under concurrent access (the intermittent "Unable to read
+    // sample duration" race).  Falls back to getTrackDuration only for non-WAV
+    // custom files that readWav can't parse.
+    final wavData = await readWav(path);
     if (!mounted) return;
 
-    final dur = results[0] as Duration?;
-    final wavData = results[1] as WavData?;
+    Duration? dur;
+    if (wavData != null && wavData.sampleRate > 0 && wavData.numFrames > 0) {
+      dur = Duration(
+        milliseconds: (wavData.numFrames / wavData.sampleRate * 1000).round(),
+      );
+    } else {
+      dur = await model.getTrackDuration(widget.trackIndex);
+      if (!mounted) return;
+    }
 
     setState(() {
       _duration = dur;
@@ -135,15 +144,6 @@ class _TrimEditorSheetState extends State<TrimEditorSheet> {
     _previewTimer = null;
     context.read<SequencerModel>().stopTrack(widget.trackIndex);
     if (mounted) setState(() { _previewing = false; _playProgress = 0.0; });
-  }
-
-  /// Returns the effective trim-end in milliseconds.
-  ///
-  /// If [endFrac] maps to a position before the sample end it is used as-is;
-  /// otherwise the full sample duration is used (i.e. "play to end").
-  int _effectiveEndMs(double endFrac, Duration dur) {
-    final endMs = (endFrac * dur.inMilliseconds).round();
-    return endMs < dur.inMilliseconds ? endMs : dur.inMilliseconds;
   }
 
   Future<void> _togglePreview() async {
@@ -212,15 +212,23 @@ class _TrimEditorSheetState extends State<TrimEditorSheet> {
       final model = context.read<SequencerModel>();
       final dur = _duration;
       if (dur != null) {
-        final startMs = (_startFrac * dur.inMilliseconds).round();
-        final endMs = _effectiveEndMs(_endFrac, dur);
-        if (startMs <= 0 && endMs >= dur.inMilliseconds) {
+        // Use displayDurMs so trim positions are relative to the NEW stretch
+        // duration, not the currently-loaded file's duration.  Without this,
+        // changing both trim and stretch in one APPLY would set trim points
+        // against the old sample length.
+        final newRatio = _sliderToRatio(_stretchSlider);
+        final displayScale =
+            _appliedStretchRatio > 0 ? newRatio / _appliedStretchRatio : 1.0;
+        final displayDurMs = (dur.inMilliseconds * displayScale).round();
+        final startMs = (_startFrac * displayDurMs).round();
+        final endMs = (_endFrac * displayDurMs).round();
+        if (startMs <= 0 && endMs >= displayDurMs) {
           model.clearTrim(widget.trackIndex);
         } else {
           model.setTrim(
             widget.trackIndex,
             Duration(milliseconds: startMs),
-            endMs < dur.inMilliseconds ? Duration(milliseconds: endMs) : null,
+            endMs < displayDurMs ? Duration(milliseconds: endMs) : null,
           );
         }
       }
