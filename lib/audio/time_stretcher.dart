@@ -178,14 +178,15 @@ Future<String?> stretchWavFile(StretchArgs args) async {
     }
   }
 
-  // Normalise to prevent clipping (the phase vocoder can produce amplitudes
-  // slightly above the input peak due to windowing accumulation).
+  // Only scale down to prevent clipping — never boost a quiet signal.
+  // The previous threshold (1e-10) normalised everything to 0.98× peak,
+  // changing the level of quiet recordings relative to the original.
   double peak = 0.0;
   for (final s in mixBuffer) {
     final a = s.abs();
     if (a > peak) peak = a;
   }
-  final scale = peak > 1e-10 ? 0.98 / peak : 1.0;
+  final scale = peak > 1.0 ? 0.98 / peak : 1.0;
 
   await writeWavChunked(
     outputPath: args.outputPath,

@@ -1,9 +1,12 @@
 import 'dart:convert';
 import 'dart:io';
+import 'dart:typed_data';
 
 import 'package:flutter/foundation.dart';
 import 'package:path/path.dart' as p;
 import 'package:path_provider/path_provider.dart';
+
+import 'wav_io.dart';
 
 class SampleEntry {
   const SampleEntry({required this.path, required this.name});
@@ -138,16 +141,48 @@ class SampleLibrary extends ChangeNotifier {
   }
 
   /// Copy a finished recording into the library with [name] as the display name.
+  /// WAV recordings are peak-normalised to 0.98× before saving so every
+  /// recording lands at a consistent level regardless of recording volume.
   Future<void> addRecording(String tempPath, String name) async {
     if (_libraryDir == null) return;
     final ext = _audioExtensionOf(tempPath);
     // Use a timestamp filename to avoid collisions regardless of display name.
     final filename = '${DateTime.now().millisecondsSinceEpoch}.$ext';
     final destPath = '${_libraryDir!.path}/$filename';
-    await File(tempPath).copy(destPath);
+    final normalised = await _normaliseAndSave(tempPath, destPath);
+    if (!normalised) {
+      await File(tempPath).copy(destPath);
+    }
     _samples.add(SampleEntry(path: destPath, name: name));
     await _saveIndex();
     notifyListeners();
+  }
+
+  /// Read [srcPath] as WAV, peak-normalise to 0.98×, write to [destPath].
+  /// Returns false if [srcPath] is not a parseable WAV (e.g. AAC), in which
+  /// case the caller should fall back to a plain file copy.
+  Future<bool> _normaliseAndSave(String srcPath, String destPath) async {
+    final wav = await readWav(srcPath);
+    if (wav == null || wav.numFrames == 0) return false;
+
+    final float = Float64List(wav.samples.length);
+    double peak = 0.0;
+    for (int i = 0; i < wav.samples.length; i++) {
+      float[i] = wav.samples[i] / 32767.0;
+      final a = float[i].abs();
+      if (a > peak) peak = a;
+    }
+    // If the recording is effectively silent, skip normalisation.
+    if (peak < 1e-6) return false;
+
+    await writeWavChunked(
+      outputPath: destPath,
+      mixBuffer: float,
+      scale: 0.98 / peak,
+      sampleRate: wav.sampleRate,
+      numChannels: wav.numChannels,
+    );
+    return true;
   }
 
   /// Rename a library entry. Updates the index; does not rename the file.

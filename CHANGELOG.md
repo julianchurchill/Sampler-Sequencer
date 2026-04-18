@@ -5,6 +5,19 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [2.7.0] - 2026-04-18
+
+### Added
+- Recordings are now peak-normalised to 0.98× on save, so every captured
+  sample lands at a consistent volume regardless of how close the mic was.
+  Non-WAV recordings (e.g. AAC) are saved as-is unchanged.
+
+### Fixed
+- Time-stretching no longer changes the perceived volume of the sample.
+  The phase vocoder was normalising output to 0.98× peak even when the
+  input was quiet, causing a level jump when switching back to 1.0×.
+  It now only scales down to prevent clipping (peak > 1.0), never boosts.
+
 ## [2.6.1] - 2026-04-18
 
 ### Fixed
