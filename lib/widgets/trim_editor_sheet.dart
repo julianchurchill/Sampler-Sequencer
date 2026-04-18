@@ -183,30 +183,40 @@ class _TrimEditorSheetState extends State<TrimEditorSheet> {
     setState(() => _applying = true);
     if (_previewing) _stopPreview();
 
-    final model = context.read<SequencerModel>();
-    final dur = _duration;
-    if (dur != null) {
-      final startMs = (_startFrac * dur.inMilliseconds).round();
-      final endMs = _effectiveEndMs(_endFrac, dur);
-      if (startMs <= 0 && endMs >= dur.inMilliseconds) {
-        model.clearTrim(widget.trackIndex);
+    try {
+      final model = context.read<SequencerModel>();
+      final dur = _duration;
+      if (dur != null) {
+        final startMs = (_startFrac * dur.inMilliseconds).round();
+        final endMs = _effectiveEndMs(_endFrac, dur);
+        if (startMs <= 0 && endMs >= dur.inMilliseconds) {
+          model.clearTrim(widget.trackIndex);
+        } else {
+          model.setTrim(
+            widget.trackIndex,
+            Duration(milliseconds: startMs),
+            endMs < dur.inMilliseconds ? Duration(milliseconds: endMs) : null,
+          );
+        }
+      }
+
+      final ratio = _sliderToRatio(_stretchSlider);
+      if ((ratio - 1.0).abs() < 0.005) {
+        await model.clearStretch(widget.trackIndex);
       } else {
-        model.setTrim(
-          widget.trackIndex,
-          Duration(milliseconds: startMs),
-          endMs < dur.inMilliseconds ? Duration(milliseconds: endMs) : null,
+        await model.setStretch(widget.trackIndex, ratio);
+      }
+
+      if (mounted) Navigator.pop(context);
+    } catch (e) {
+      debugPrint('TrimEditorSheet _apply error: $e');
+      if (mounted) {
+        setState(() => _applying = false);
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(content: Text('Failed to apply stretch — try again')),
         );
       }
     }
-
-    final ratio = _sliderToRatio(_stretchSlider);
-    if ((ratio - 1.0).abs() < 0.005) {
-      await model.clearStretch(widget.trackIndex);
-    } else {
-      await model.setStretch(widget.trackIndex, ratio);
-    }
-
-    if (mounted) Navigator.pop(context);
   }
 
   @override
