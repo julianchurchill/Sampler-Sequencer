@@ -64,6 +64,18 @@ void main() {
       }
     });
 
+    test('low-amplitude input is not boosted by the OLA process', () {
+      const n = 4410;
+      const inputPeak = 0.1;
+      final signal = Float64List(n)..fillRange(0, n, inputPeak);
+      final result = timeStretch(signal, 1.0);
+      for (int i = 0; i < result.length; i++) {
+        expect(result[i].abs(), lessThanOrEqualTo(inputPeak * 2),
+            reason: 'output[$i] = ${result[i]} is more than 2× the input peak '
+                '$inputPeak; timeStretch must not significantly boost quiet signals');
+      }
+    });
+
     test('ratio 0.1 returns approximately 10× shorter output', () {
       const n = 44100; // 1 second
       final signal = Float64List(n)..fillRange(0, n, 0.5);
