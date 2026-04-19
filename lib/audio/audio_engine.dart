@@ -7,6 +7,7 @@ import 'package:path_provider/path_provider.dart';
 import '../constants.dart';
 import 'dsp_utils.dart';
 import 'time_stretcher.dart';
+import 'wav_io.dart';
 
 // ---------------------------------------------------------------------------
 // AudioEngine
@@ -48,6 +49,17 @@ const int _kPresetCacheVersion = 1;
 ///
 /// Do not reduce this value — see CLAUDE.md "Ping-pong retrigger".
 const int _kSlotsPerTrack = 6;
+
+/// Samples whose decoded size would exceed SoundPool's memory budget are
+/// played via [PlayerMode.mediaPlayer] instead of [PlayerMode.lowLatency].
+///
+/// Android's SoundPool holds decoded PCM in a shared memory pool (~1 MB by
+/// default). At 44.1 kHz / 16-bit / mono that is ~11.9 s; at stereo it halves
+/// to ~5.9 s. Using 8 s as a conservative threshold keeps mono recordings well
+/// below the limit while accounting for the memory already used by the other
+/// three tracks' samples. Samples under this length keep SoundPool's ~1 ms
+/// trigger latency; samples over it use mediaPlayer (~5 ms) to play in full.
+const Duration _kSoundPoolSafeLimit = Duration(seconds: 8);
 
 class AudioEngine {
   /// Public alias for the number of SoundPool player slots per track.
@@ -124,6 +136,11 @@ class AudioEngine {
 
   /// Per-track mute flag (true = muted, no audio output).
   final List<bool> _trackMuted = List.filled(kNumTracks, false);
+
+  /// Whether the current sample for each track exceeds [_kSoundPoolSafeLimit].
+  /// When true, the track's primary player stays in [PlayerMode.mediaPlayer]
+  /// even when trim is cleared, preventing SoundPool truncation of long samples.
+  final List<bool> _sampleTooLong = List.filled(kNumTracks, false);
 
   /// Per-track in-flight rebuild future. When `_schedulePlayerModeSwitch`
   /// launches `_rebuildPlayer`, the future is stored here so that `trigger()`
@@ -304,6 +321,13 @@ class AudioEngine {
     ));
 
     _ready = true;
+
+    // Check each track's initial sample length. Preset samples are always
+    // short (< 1 s) so this is a no-op for the default configuration; it
+    // matters when SequencerModel restores persisted custom samples on startup.
+    for (int i = 0; i < kNumTracks; i++) {
+      await _updateModeForSample(i);
+    }
   }
 
   // ---------------------------------------------------------------------------
@@ -377,7 +401,9 @@ class AudioEngine {
   Future<void> _reloadSourceForTrack(int track) {
     if (!_ready) return Future.value();
     late final Future<void> future;
-    future = _loadSlotsSequential(track).whenComplete(() {
+    future = _loadSlotsSequential(track)
+        .then((_) => _updateModeForSample(track))
+        .whenComplete(() {
       if (identical(_pendingReload[track], future)) {
         _pendingReload[track] = null;
       }
@@ -426,11 +452,35 @@ class AudioEngine {
 
   /// Clear trim for [track]; sample plays from beginning to end.
   ///
-  /// Switches the primary sequencer player back to lowLatency for fast triggering.
+  /// Switches the primary sequencer player back to lowLatency for fast
+  /// triggering, unless the sample exceeds [_kSoundPoolSafeLimit] — in that
+  /// case mediaPlayer is retained to prevent SoundPool truncation.
   void clearTrim(int track) {
     _trimStart[track] = Duration.zero;
     _trimEnd[track] = null;
-    _schedulePlayerModeSwitch(track, PlayerMode.lowLatency);
+    _schedulePlayerModeSwitch(
+      track,
+      _sampleTooLong[track] ? PlayerMode.mediaPlayer : PlayerMode.lowLatency,
+    );
+  }
+
+  /// Check [track]'s current sample duration and update the player mode.
+  ///
+  /// Reads just the WAV header (at most 512 bytes) to determine duration.
+  /// If the sample exceeds [_kSoundPoolSafeLimit], the primary player is
+  /// switched to [PlayerMode.mediaPlayer] so the full sample plays without
+  /// SoundPool truncation. If trim is already active the mode is already
+  /// mediaPlayer; this method only adjusts mode for untrimmed tracks.
+  Future<void> _updateModeForSample(int track) async {
+    final path = samplePath(track);
+    final dur = await readWavDuration(path);
+    _sampleTooLong[track] = dur != null && dur > _kSoundPoolSafeLimit;
+    if (!hasTrim(track)) {
+      _schedulePlayerModeSwitch(
+        track,
+        _sampleTooLong[track] ? PlayerMode.mediaPlayer : PlayerMode.lowLatency,
+      );
+    }
   }
 
   // ---------------------------------------------------------------------------

@@ -5,6 +5,19 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [2.8.0] - 2026-04-19
+
+### Fixed
+- Long samples (> 8 s) no longer play back truncated in the sequencer.
+  Android's SoundPool has a memory limit (~1 MB decoded) that silently
+  truncates samples exceeding it, causing premature cut-off during playback
+  while exported WAV files (which bypass SoundPool) sounded correct.
+  The engine now reads the WAV header on every sample load and automatically
+  switches tracks with long samples to `mediaPlayer` mode (~5 ms latency
+  instead of ~1 ms), which has no memory limit and plays the full sample.
+  Short samples (presets and typical drum hits) are unaffected and retain
+  SoundPool's low-latency trigger path.
+
 ## [2.7.0] - 2026-04-18
 
 ### Added
