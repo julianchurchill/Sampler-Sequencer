@@ -110,6 +110,8 @@ class _TrackSettingsSheet extends StatelessWidget {
   final int trackIndex;
 
   void _openSoundPicker(BuildContext context) {
+    final model = context.read<SequencerModel>();
+    final library = context.read<SampleLibrary>();
     Navigator.pop(context); // close settings first
     showModalBottomSheet<void>(
       context: context,
@@ -124,8 +126,8 @@ class _TrackSettingsSheet extends StatelessWidget {
       ),
       builder: (sheetCtx) => MultiProvider(
         providers: [
-          Provider.value(value: context.read<SequencerModel>()),
-          ChangeNotifierProvider.value(value: context.read<SampleLibrary>()),
+          Provider.value(value: model),
+          ChangeNotifierProvider.value(value: library),
         ],
         child: _SoundPickerSheet(trackIndex: trackIndex),
       ),
@@ -133,6 +135,7 @@ class _TrackSettingsSheet extends StatelessWidget {
   }
 
   void _openTrimEditor(BuildContext context) {
+    final model = context.read<SequencerModel>();
     Navigator.pop(context); // close settings first
     showModalBottomSheet<void>(
       context: context,
@@ -143,7 +146,7 @@ class _TrackSettingsSheet extends StatelessWidget {
         borderRadius: BorderRadius.vertical(top: Radius.circular(12)),
       ),
       builder: (sheetCtx) => Provider.value(
-        value: context.read<SequencerModel>(),
+        value: model,
         child: TrimEditorSheet(trackIndex: trackIndex),
       ),
     );
