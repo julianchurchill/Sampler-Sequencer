@@ -1,3 +1,5 @@
+import 'dart:async';
+
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:provider/provider.dart';
@@ -9,12 +11,26 @@ import 'screens/sequencer_screen.dart';
 
 void main() {
   WidgetsFlutterBinding.ensureInitialized();
-  // Drum machines are landscape — lock orientation.
-  SystemChrome.setPreferredOrientations([
-    DeviceOrientation.landscapeLeft,
-    DeviceOrientation.landscapeRight,
-  ]);
-  runApp(const SamplerApp());
+
+  FlutterError.onError = (details) {
+    debugPrint(
+        'FlutterError: ${details.exception}\n${details.stack}');
+    FlutterError.presentError(details);
+  };
+
+  runZonedGuarded(
+    () {
+      // Drum machines are landscape — lock orientation.
+      SystemChrome.setPreferredOrientations([
+        DeviceOrientation.landscapeLeft,
+        DeviceOrientation.landscapeRight,
+      ]);
+      runApp(const SamplerApp());
+    },
+    (error, stack) {
+      debugPrint('Unhandled async error: $error\n$stack');
+    },
+  );
 }
 
 class SamplerApp extends StatelessWidget {
