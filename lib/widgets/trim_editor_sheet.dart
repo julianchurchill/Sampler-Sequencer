@@ -272,8 +272,10 @@ class _TrimEditorSheetState extends State<TrimEditorSheet> {
 
     return PopScope(
       canPop: !_applying,
-      child: Padding(
-      padding: const EdgeInsets.fromLTRB(16, 16, 16, 24),
+      child: Stack(
+        children: [
+          Padding(
+          padding: const EdgeInsets.fromLTRB(16, 16, 16, 24),
       child: Column(
         mainAxisSize: MainAxisSize.min,
         crossAxisAlignment: CrossAxisAlignment.start,
@@ -488,7 +490,31 @@ class _TrimEditorSheetState extends State<TrimEditorSheet> {
             ),
           ],
         ],
-      ),
+          ),
+          ),
+          if (_applying)
+            Positioned.fill(
+              child: Container(
+                decoration: BoxDecoration(
+                  color: Colors.black.withValues(alpha: 0.6),
+                  borderRadius: const BorderRadius.vertical(
+                    top: Radius.circular(12),
+                  ),
+                ),
+                child: Column(
+                  mainAxisAlignment: MainAxisAlignment.center,
+                  children: [
+                    CircularProgressIndicator(color: color),
+                    const SizedBox(height: 16),
+                    const Text(
+                      'Applying…',
+                      style: TextStyle(color: Colors.white, fontSize: 13),
+                    ),
+                  ],
+                ),
+              ),
+            ),
+        ],
       ),
     );
   }
