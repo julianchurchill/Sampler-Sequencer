@@ -45,6 +45,8 @@ class TrimEditorSheet extends StatefulWidget {
 }
 
 class _TrimEditorSheetState extends State<TrimEditorSheet> {
+  late SequencerModel _model;
+
   Duration? _duration;
   bool _loading = true;
   bool _previewing = false;
@@ -75,6 +77,7 @@ class _TrimEditorSheetState extends State<TrimEditorSheet> {
   @override
   void initState() {
     super.initState();
+    _model = context.read<SequencerModel>();
     _loadDuration();
   }
 
@@ -85,7 +88,8 @@ class _TrimEditorSheetState extends State<TrimEditorSheet> {
     // Always stop — even if the UI timer already reset _previewing to false,
     // AudioEngine._previewPlaying may still be true (no auto-reset when
     // end == null), which blocks the next getTrackDuration call.
-    context.read<SequencerModel>().stopTrack(widget.trackIndex);
+    // Use the stored _model reference — context is deactivated by dispose time.
+    _model.stopTrack(widget.trackIndex);
     super.dispose();
   }
 
@@ -266,7 +270,9 @@ class _TrimEditorSheetState extends State<TrimEditorSheet> {
         ? (dur.inMilliseconds * displayScale).round()
         : 0;
 
-    return Padding(
+    return PopScope(
+      canPop: !_applying,
+      child: Padding(
       padding: const EdgeInsets.fromLTRB(16, 16, 16, 24),
       child: Column(
         mainAxisSize: MainAxisSize.min,
@@ -482,6 +488,7 @@ class _TrimEditorSheetState extends State<TrimEditorSheet> {
             ),
           ],
         ],
+      ),
       ),
     );
   }
