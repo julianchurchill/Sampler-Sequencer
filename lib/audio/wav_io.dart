@@ -110,6 +110,58 @@ Future<void> writeWavChunked({
   await sink.close();
 }
 
+/// Read the duration of a WAV file without loading the full PCM data.
+///
+/// Only the first 512 bytes are read to locate the RIFF/WAVE header chunks.
+/// The duration is derived from the `byteRate` field in the `fmt ` chunk and
+/// the `data` chunk size. Falls back to a file-size estimate when the `data`
+/// chunk is not found within the first 512 bytes (e.g. files with large
+/// embedded metadata blocks).
+/// Returns null if the file is missing, corrupt, or not PCM format.
+Future<Duration?> readWavDuration(String path) async {
+  try {
+    final file = File(path);
+    final fileLen = await file.length();
+    final readLen = fileLen.clamp(0, 512);
+    final raf = await file.open();
+    final buf = await raf.read(readLen);
+    await raf.close();
+    if (buf.length < 44) return null;
+
+    String fourCC(int off) => String.fromCharCodes(buf, off, off + 4);
+    if (fourCC(0) != 'RIFF' || fourCC(8) != 'WAVE') return null;
+
+    int? byteRate, dataSize;
+    int i = 12;
+
+    while (i + 8 <= buf.length) {
+      final chunkId = fourCC(i);
+      final chunkSize =
+          ByteData.sublistView(buf, i + 4, i + 8).getUint32(0, Endian.little);
+
+      if (chunkId == 'fmt ' && i + 20 <= buf.length) {
+        final fmt = ByteData.sublistView(buf, i + 8, i + 20);
+        if (fmt.getUint16(0, Endian.little) != 1) return null; // not PCM
+        byteRate = fmt.getUint32(8, Endian.little);
+      } else if (chunkId == 'data') {
+        dataSize = chunkSize;
+        break;
+      }
+
+      if (chunkSize == 0) break; // malformed chunk; avoid infinite loop
+      i += 8 + chunkSize + (chunkSize & 1);
+    }
+
+    if (byteRate == null || byteRate == 0) return null;
+    final effectiveBytes = dataSize ?? (fileLen - 44).clamp(0, fileLen);
+    if (effectiveBytes <= 0) return null;
+    return Duration(microseconds: effectiveBytes * 1000000 ~/ byteRate);
+  } catch (e) {
+    debugPrint('readWavDuration error: $e');
+    return null;
+  }
+}
+
 /// Parse a WAV file into PCM frames.
 /// Returns null if the file is missing, not a WAV, or not PCM format.
 Future<WavData?> readWav(String path) async {

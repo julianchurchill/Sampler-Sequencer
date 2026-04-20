@@ -1,8 +1,10 @@
+import 'dart:io';
 import 'dart:typed_data';
 
 import 'package:flutter_test/flutter_test.dart';
 
 import 'package:sampler_sequencer/audio/dsp_utils.dart';
+import 'package:sampler_sequencer/audio/wav_io.dart';
 
 const int _kSampleRate = 44100;
 
@@ -174,6 +176,96 @@ void main() {
         expect(peaks[i], inInclusiveRange(0.0, 1.0),
             reason: 'bin $i value ${peaks[i]} should be in [0.0, 1.0]');
       }
+    });
+  });
+
+  // -------------------------------------------------------------------------
+  group('readWavDuration', () {
+    late Directory tempDir;
+
+    setUp(() {
+      tempDir = Directory.systemTemp.createTempSync('wav_duration_test_');
+    });
+
+    tearDown(() {
+      tempDir.deleteSync(recursive: true);
+    });
+
+    Future<String> writeTestWav({
+      required int numFrames,
+      required int sampleRate,
+      required int numChannels,
+    }) async {
+      final path = '${tempDir.path}/test_${numFrames}_${sampleRate}_$numChannels.wav';
+      final header = writeWavHeader(
+        numSamples: numFrames,
+        sampleRate: sampleRate,
+        numChannels: numChannels,
+      );
+      final pcm = Uint8List(numFrames * numChannels * 2); // silent PCM data
+      await File(path).writeAsBytes([...header, ...pcm]);
+      return path;
+    }
+
+    test('returns correct duration for a 5-second mono WAV', () async {
+      final path = await writeTestWav(
+        numFrames: 5 * 44100,
+        sampleRate: 44100,
+        numChannels: 1,
+      );
+      final dur = await readWavDuration(path);
+      expect(dur, isNotNull,
+          reason: 'should parse a valid 5-second mono WAV header');
+      expect(dur!.inMilliseconds, closeTo(5000, 5),
+          reason: 'mono WAV: 5 × 44100 frames / 44100 Hz = exactly 5 s');
+    });
+
+    test('returns correct duration for a 500 ms stereo WAV', () async {
+      final path = await writeTestWav(
+        numFrames: 44100 ~/ 2,
+        sampleRate: 44100,
+        numChannels: 2,
+      );
+      final dur = await readWavDuration(path);
+      expect(dur, isNotNull,
+          reason: 'should parse a valid 500 ms stereo WAV header');
+      expect(dur!.inMilliseconds, closeTo(500, 5),
+          reason: 'stereo WAV: 22050 frames / 44100 Hz = 0.5 s');
+    });
+
+    test('returns correct duration for a non-standard sample rate', () async {
+      final path = await writeTestWav(
+        numFrames: 3 * 22050,
+        sampleRate: 22050,
+        numChannels: 1,
+      );
+      final dur = await readWavDuration(path);
+      expect(dur, isNotNull,
+          reason: 'should parse a 22050 Hz WAV header');
+      expect(dur!.inMilliseconds, closeTo(3000, 5),
+          reason: '22050 Hz WAV: 3 × 22050 frames / 22050 Hz = 3 s');
+    });
+
+    test('returns null for a non-existent file', () async {
+      final dur = await readWavDuration('${tempDir.path}/no_such_file.wav');
+      expect(dur, isNull,
+          reason: 'should return null when the file does not exist');
+    });
+
+    test('returns null for a file containing garbage bytes', () async {
+      final path = '${tempDir.path}/garbage.bin';
+      await File(path).writeAsBytes([0, 1, 2, 3, 4, 5, 6, 7]);
+      final dur = await readWavDuration(path);
+      expect(dur, isNull,
+          reason: 'should return null for a file with no RIFF/WAVE header');
+    });
+
+    test('returns null for a file shorter than 44 bytes', () async {
+      final path = '${tempDir.path}/tiny.wav';
+      await File(path).writeAsBytes(Uint8List(20));
+      final dur = await readWavDuration(path);
+      expect(dur, isNull,
+          reason: 'should return null for a file too short to hold a WAV header');
     });
   });
 
