@@ -5,6 +5,17 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [2.8.1] - 2026-04-20
+
+### Fixed
+- Trim markers (slider thumbs) are now correctly aligned with the waveform
+  image. Flutter's `RangeSlider` adds horizontal padding equal to
+  `max(overlayRadius, thumbRadius)` before the track begins; with the default
+  24 px overlay radius the thumbs were offset ~24 px inward while the waveform
+  active/inactive boundary started at the widget edge. Fixed by setting
+  `overlayRadius: 8` (matching the thumb radius) and applying the same 8 px
+  inset to the waveform `CustomPaint`.
+
 ## [2.8.0] - 2026-04-19
 
 ### Fixed

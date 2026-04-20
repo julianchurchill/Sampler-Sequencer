@@ -306,23 +306,35 @@ class _TrimEditorSheetState extends State<TrimEditorSheet> {
               height: 80,
               child: Stack(
                 children: [
-                  CustomPaint(
-                    painter: _WaveformPainter(
-                      peaks: _waveformPeaks ?? Float64List(0),
-                      startFrac: _startFrac,
-                      endFrac: _endFrac,
-                      playheadFrac: _previewing
-                          ? _startFrac + _playProgress * (_endFrac - _startFrac)
-                          : null,
-                      color: color,
+                  // The RangeSlider adds horizontal padding equal to
+                  // max(overlayRadius, thumbRadius) on each side before the
+                  // track begins. By setting overlayRadius = thumbRadius = 8,
+                  // both padding values are 8 px. The waveform CustomPaint is
+                  // wrapped in the same 8 px horizontal inset so that fractions
+                  // map to the same pixel positions as the slider thumbs.
+                  Padding(
+                    padding: const EdgeInsets.symmetric(horizontal: 8),
+                    child: CustomPaint(
+                      painter: _WaveformPainter(
+                        peaks: _waveformPeaks ?? Float64List(0),
+                        startFrac: _startFrac,
+                        endFrac: _endFrac,
+                        playheadFrac: _previewing
+                            ? _startFrac + _playProgress * (_endFrac - _startFrac)
+                            : null,
+                        color: color,
+                      ),
+                      size: Size.infinite,
                     ),
-                    size: Size.infinite,
                   ),
                   SliderTheme(
                     data: SliderTheme.of(context).copyWith(
                       trackHeight: 0,
                       rangeThumbShape: const RoundRangeSliderThumbShape(
                         enabledThumbRadius: 8,
+                      ),
+                      overlayShape: const RoundSliderOverlayShape(
+                        overlayRadius: 8,
                       ),
                       activeTrackColor: Colors.transparent,
                       inactiveTrackColor: Colors.transparent,
