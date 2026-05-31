@@ -395,11 +395,11 @@ void main() {
                 '(silent beat) instead of the new one.');
 
         verifyNever(() => oldPrimaryPlayer.seek(any()),
-            description: 'seek() must not be called on the old player that '
+            reason: 'seek() must not be called on the old player that '
                 '_rebuildPlayer disposed — it was replaced in _players.');
 
         verifyNever(() => oldPrimaryPlayer.resume(),
-            description: 'resume() must not be called on the old disposed player.');
+            reason: 'resume() must not be called on the old disposed player.');
       },
     );
   });
