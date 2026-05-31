@@ -392,4 +392,74 @@ void main() {
       },
     );
   });
+
+  // ---------------------------------------------------------------------------
+  group('AudioEngine previewTrim / _previewPlaying flag', () {
+    late AudioEngine engine;
+    late MockAudioPlayer previewMock;
+    late StreamController<void> completeController;
+
+    setUp(() {
+      engine = AudioEngine();
+      completeController = StreamController<void>.broadcast();
+      previewMock = MockAudioPlayer();
+
+      when(() => previewMock.onPositionChanged)
+          .thenAnswer((_) => const Stream.empty());
+      when(() => previewMock.onPlayerComplete)
+          .thenAnswer((_) => completeController.stream);
+      when(() => previewMock.setVolume(any())).thenAnswer((_) async {});
+      when(() => previewMock.stop()).thenAnswer((_) async {});
+      when(() => previewMock.setSource(any())).thenAnswer((_) async {});
+      when(() => previewMock.seek(any())).thenAnswer((_) async {});
+      when(() => previewMock.resume()).thenAnswer((_) async {});
+      when(() => previewMock.getDuration())
+          .thenAnswer((_) async => const Duration(seconds: 2));
+
+      final stopCounts = <MockAudioPlayer, int>{};
+      final playCounts = <MockAudioPlayer, int>{};
+      final playVolumes = <MockAudioPlayer, List<double>>{};
+      final players = [
+        for (int i = 0; i < 4 * AudioEngine.slotsPerTrack; i++)
+          _makePlayer(stopCounts, playCounts, playVolumes),
+      ];
+
+      engine.initForTest(players: players, previewPlayer: previewMock);
+    });
+
+    tearDown(() => completeController.close());
+
+    // -----------------------------------------------------------------------
+    test(
+      'previewTrim(end: null) clears _previewPlaying when onPlayerComplete '
+      'fires — regression for issue #81',
+      () async {
+        // Root cause: _previewPlaying is set true after resume() but the only
+        // clearing path (a Timer) is inside `if (end != null)`. When end is
+        // null the timer is never scheduled, so _previewPlaying stays true
+        // until the user explicitly calls stopTrack/stopAll — permanently
+        // blocking getTrackDuration and all subsequent trim-editor operations.
+        //
+        // The fix subscribes to _previewPlayer.onPlayerComplete so natural
+        // sample completion clears the flag.
+
+        await engine.previewTrim(0, Duration.zero, null);
+
+        expect(await engine.getTrackDuration(0), isNull,
+            reason: 'getTrackDuration must return null while the preview is '
+                'actively playing (_previewPlaying == true)');
+
+        // Simulate the audio player reaching the end of the sample.
+        completeController.add(null);
+        await Future<void>.delayed(Duration.zero);
+
+        expect(await engine.getTrackDuration(0), isNotNull,
+            reason: 'getTrackDuration must return non-null after natural '
+                'completion of a full-sample preview. '
+                '_previewPlaying was not cleared by onPlayerComplete — '
+                'the trim editor duration probe is permanently blocked '
+                '(issue #81).');
+      },
+    );
+  });
 }

@@ -5,6 +5,17 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [2.8.3] - 2026-05-31
+
+### Fixed
+- `_previewPlaying` flag is now cleared when a full-sample trim preview
+  (`previewTrim` with `end == null`) finishes naturally. Previously the flag
+  was only cleared inside an `if (end != null)` timer branch, so it remained
+  `true` indefinitely after the audio completed — permanently blocking
+  `getTrackDuration` and all subsequent trim-editor duration probes until the
+  user explicitly called stop. Fixed by subscribing to
+  `_previewPlayer.onPlayerComplete` in the `else` branch. (Issue #81)
+
 ## [2.8.2] - 2026-05-31
 
 ### Fixed
