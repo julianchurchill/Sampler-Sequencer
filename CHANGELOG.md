@@ -5,6 +5,16 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [2.8.2] - 2026-05-31
+
+### Fixed
+- Trimmed triggers now correctly play back sound when the engine performs an
+  inline player rebuild (`_triggerMediaPlayer`). Previously, the player
+  reference was captured before `_rebuildPlayer` replaced it in `_players`,
+  so `seek()` and `resume()` were dispatched to the disposed old player and
+  silently lost — producing a silent beat on the first trimmed trigger after
+  mode-switch. The reference is now captured after the rebuild. (Issue #79)
+
 ## [2.8.1] - 2026-04-20
 
 ### Fixed

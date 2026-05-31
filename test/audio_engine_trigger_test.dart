@@ -19,10 +19,9 @@ class _FakeSource extends Fake implements Source {}
 // Helpers
 // ---------------------------------------------------------------------------
 
-/// Returns a [MockAudioPlayer] with every method called during
-/// [AudioEngine.trigger]'s fast (untrimmed, lowLatency) path stubbed to
-/// complete immediately. Calls are tracked via [stopCount] / [playCount] maps
-/// that the caller provides.
+/// Returns a [MockAudioPlayer] with every method called during any trigger
+/// path (fast untrimmed or trimmed mediaPlayer) stubbed to complete
+/// immediately. Calls to [stop] and [play] are tracked via the provided maps.
 MockAudioPlayer _makePlayer(
   Map<MockAudioPlayer, int> stopCounts,
   Map<MockAudioPlayer, int> playCounts,
@@ -42,10 +41,19 @@ MockAudioPlayer _makePlayer(
     if (vol != null) playVolumes[p]!.add(vol);
   });
 
-  // Stubs needed only during initForTest path (no-ops are fine).
+  // Stubs for initForTest path and source reloads.
   when(() => p.setSource(any())).thenAnswer((_) async {});
   when(() => p.setVolume(any())).thenAnswer((_) async {});
   when(() => p.dispose()).thenAnswer((_) async {});
+
+  // Stubs for _rebuildPlayer (sets up mode/release/context on the new player)
+  // and for the trimmed _triggerMediaPlayer path (seek/resume).
+  when(() => p.setPlayerMode(any())).thenAnswer((_) async {});
+  when(() => p.setReleaseMode(any())).thenAnswer((_) async {});
+  when(() => p.setAudioContext(any())).thenAnswer((_) async {});
+  when(() => p.seek(any())).thenAnswer((_) async {});
+  when(() => p.resume()).thenAnswer((_) async {});
+
   return p;
 }
 
@@ -56,6 +64,13 @@ MockAudioPlayer _makePlayer(
 void main() {
   setUpAll(() {
     registerFallbackValue(_FakeSource());
+    // Required by _makePlayer stubs that use any() with non-primitive types.
+    registerFallbackValue(PlayerMode.lowLatency);
+    registerFallbackValue(ReleaseMode.stop);
+    registerFallbackValue(AudioContext(
+      android: const AudioContextAndroid(audioFocus: AndroidAudioFocus.none),
+    ));
+    registerFallbackValue(Duration.zero);
   });
 
   group('AudioEngine trigger path (fast/untrimmed/lowLatency)', () {
@@ -292,6 +307,99 @@ void main() {
                 '${AudioEngine.slotsPerTrack} setSource() calls for the new '
                 'sample have completed.  events=$events  '
                 'playIdx=$playIdx  lastSetSourceIdx=$lastSetSourceIdx');
+      },
+    );
+  });
+
+  // ---------------------------------------------------------------------------
+  group('AudioEngine trigger path (trimmed/mediaPlayer — inline rebuild)', () {
+    late AudioEngine engine;
+    late Map<MockAudioPlayer, int> stopCounts;
+    late Map<MockAudioPlayer, int> playCounts;
+    late Map<MockAudioPlayer, List<double>> playVolumes;
+    late List<MockAudioPlayer> allPlayers;
+
+    /// The player that lives at _players[_primary(0)] before any trigger.
+    late MockAudioPlayer oldPrimaryPlayer;
+
+    /// The player that [AudioEngine.audioPlayerFactory] produces when
+    /// [_rebuildPlayer] is called inline from [_triggerMediaPlayer].
+    late MockAudioPlayer rebuiltPlayer;
+
+    setUp(() {
+      stopCounts = {};
+      playCounts = {};
+      playVolumes = {};
+
+      engine = AudioEngine();
+
+      allPlayers = [
+        for (int i = 0; i < 4 * AudioEngine.slotsPerTrack; i++)
+          _makePlayer(stopCounts, playCounts, playVolumes),
+      ];
+      oldPrimaryPlayer = allPlayers[0]; // slot 0 of track 0 = primary slot
+
+      // The player _rebuildPlayer will create when called inline.
+      rebuiltPlayer = _makePlayer(stopCounts, playCounts, playVolumes);
+      engine.audioPlayerFactory = () => rebuiltPlayer;
+
+      final preview = MockAudioPlayer();
+      when(() => preview.onPositionChanged)
+          .thenAnswer((_) => const Stream.empty());
+
+      // Inject trim state and player mode independently so that
+      // _triggerMediaPlayer's inline rebuild branch is reached:
+      //   trimmed == true  (trimStart = 100 ms)
+      //   _playerModes[0] == lowLatency  (so the condition fires)
+      engine.initForTest(
+        players: allPlayers,
+        previewPlayer: preview,
+        playerModes: [
+          PlayerMode.lowLatency,
+          PlayerMode.lowLatency,
+          PlayerMode.lowLatency,
+          PlayerMode.lowLatency,
+        ],
+        trimStarts: [
+          const Duration(milliseconds: 100),
+          Duration.zero,
+          Duration.zero,
+          Duration.zero,
+        ],
+      );
+    });
+
+    // -----------------------------------------------------------------------
+    test(
+      'seek() and resume() target the player rebuilt by _rebuildPlayer, '
+      'not the stale pre-rebuild reference — regression for #79',
+      () async {
+        // Before the fix, _triggerMediaPlayer captured the player reference at
+        // line 801 BEFORE calling _rebuildPlayer at line 803. _rebuildPlayer
+        // replaced _players[_primary(track)] with a new instance and disposed
+        // the old one. All subsequent seek/resume calls then targeted the
+        // disposed old player and were silently lost.
+        //
+        // After the fix, the capture is moved to after _rebuildPlayer so
+        // seek/resume always reach the live, correctly-configured player.
+        await engine.trigger(0, velocity: 1.0);
+
+        verify(() => rebuiltPlayer.seek(any())).called(1,
+            reason: 'seek() must reach the player created by the inline '
+                '_rebuildPlayer call, not the pre-rebuild reference. '
+                'A call on the old (disposed) player produces no sound.');
+
+        verify(() => rebuiltPlayer.resume()).called(1,
+            reason: 'resume() must reach the rebuilt player. '
+                'If this fails, the sample played on a disposed player '
+                '(silent beat) instead of the new one.');
+
+        verifyNever(() => oldPrimaryPlayer.seek(any()),
+            description: 'seek() must not be called on the old player that '
+                '_rebuildPlayer disposed — it was replaced in _players.');
+
+        verifyNever(() => oldPrimaryPlayer.resume(),
+            description: 'resume() must not be called on the old disposed player.');
       },
     );
   });
