@@ -95,6 +95,7 @@ class AudioEngine {
   /// that sequencer triggers and preview operations don't cancel each other.
   int _previewGen = 0;
   Timer? _previewTimer;
+  StreamSubscription<void>? _previewCompleteSubscription;
 
   /// Whether the preview player is currently playing a trim preview.
   /// Used to guard [getTrackDuration] against clobbering the preview player's
@@ -647,6 +648,8 @@ class AudioEngine {
     final gen = ++_previewGen;
     _previewTimer?.cancel();
     _previewTimer = null;
+    _previewCompleteSubscription?.cancel();
+    _previewCompleteSubscription = null;
     final path = previewPath ?? samplePath(track);
     try {
       await _previewPlayer.setVolume(0.0);
@@ -672,6 +675,15 @@ class AudioEngine {
             }
           });
         }
+      } else {
+        _previewCompleteSubscription =
+            _previewPlayer.onPlayerComplete.listen((_) {
+          if (_previewGen == gen) {
+            _previewPlaying = false;
+            _previewCompleteSubscription?.cancel();
+            _previewCompleteSubscription = null;
+          }
+        });
       }
     } catch (e) {
       debugPrint('AudioEngine previewTrim error: $e');
@@ -688,6 +700,8 @@ class AudioEngine {
     ++_previewGen;
     _previewTimer?.cancel();
     _previewTimer = null;
+    _previewCompleteSubscription?.cancel();
+    _previewCompleteSubscription = null;
     _previewPlaying = false;
     try {
       final stops = <Future<void>>[
@@ -717,6 +731,8 @@ class AudioEngine {
     ++_previewGen;
     _previewTimer?.cancel();
     _previewTimer = null;
+    _previewCompleteSubscription?.cancel();
+    _previewCompleteSubscription = null;
     _previewPlaying = false;
     await Future.wait([
       for (int i = 0; i < _players.length; i++)
