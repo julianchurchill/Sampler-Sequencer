@@ -384,22 +384,11 @@ void main() {
         // seek/resume always reach the live, correctly-configured player.
         await engine.trigger(0, velocity: 1.0);
 
-        verify(() => rebuiltPlayer.seek(any())).called(1,
-            reason: 'seek() must reach the player created by the inline '
-                '_rebuildPlayer call, not the pre-rebuild reference. '
-                'A call on the old (disposed) player produces no sound.');
-
-        verify(() => rebuiltPlayer.resume()).called(1,
-            reason: 'resume() must reach the rebuilt player. '
-                'If this fails, the sample played on a disposed player '
-                '(silent beat) instead of the new one.');
-
-        verifyNever(() => oldPrimaryPlayer.seek(any()),
-            reason: 'seek() must not be called on the old player that '
-                '_rebuildPlayer disposed — it was replaced in _players.');
-
-        verifyNever(() => oldPrimaryPlayer.resume(),
-            reason: 'resume() must not be called on the old disposed player.');
+        // seek/resume must target the rebuilt player, not the disposed original.
+        verify(() => rebuiltPlayer.seek(any())).called(1);
+        verify(() => rebuiltPlayer.resume()).called(1);
+        verifyNever(() => oldPrimaryPlayer.seek(any()));
+        verifyNever(() => oldPrimaryPlayer.resume());
       },
     );
   });
