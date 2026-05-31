@@ -169,6 +169,13 @@ class AudioEngine {
 
   bool _ready = false;
 
+  /// Creates [AudioPlayer] instances for [_rebuildPlayer].
+  ///
+  /// Defaults to `AudioPlayer.new`. Tests override this to inject a
+  /// controllable mock so that [_rebuildPlayer] never hits platform channels.
+  @visibleForTesting
+  AudioPlayer Function() audioPlayerFactory = AudioPlayer.new;
+
   /// Monotonically increasing counter per track. When a new trigger arrives
   /// while a previous async chain is in flight, the stale chain is abandoned.
   final List<int> _triggerGen = List.filled(kNumTracks, 0);
@@ -232,6 +239,12 @@ class AudioEngine {
     required List<AudioPlayer> players,
     required AudioPlayer previewPlayer,
     List<String>? presetPaths,
+    /// Override initial per-track player modes (default: all lowLatency).
+    List<PlayerMode>? playerModes,
+    /// Pre-set per-track trim start offsets without triggering a mode switch.
+    List<Duration>? trimStarts,
+    /// Pre-set per-track trim end offsets without triggering a mode switch.
+    List<Duration?>? trimEnds,
   }) {
     assert(
       players.length == kNumTracks * _kSlotsPerTrack,
@@ -243,6 +256,21 @@ class AudioEngine {
     final paths = presetPaths ??
         [for (int i = 0; i < kDrumPresets.length; i++) '/fake/preset_$i.wav'];
     _presetPaths.addAll(paths);
+    if (playerModes != null) {
+      for (int i = 0; i < kNumTracks && i < playerModes.length; i++) {
+        _playerModes[i] = playerModes[i];
+      }
+    }
+    if (trimStarts != null) {
+      for (int i = 0; i < kNumTracks && i < trimStarts.length; i++) {
+        _trimStart[i] = trimStarts[i];
+      }
+    }
+    if (trimEnds != null) {
+      for (int i = 0; i < kNumTracks && i < trimEnds.length; i++) {
+        _trimEnd[i] = trimEnds[i];
+      }
+    }
     _ready = true;
   }
 
@@ -567,7 +595,7 @@ class AudioEngine {
   Future<void> _rebuildPlayer(int track, PlayerMode mode) async {
     final idx = _primary(track);
     final old = _players[idx];
-    final player = AudioPlayer();
+    final player = audioPlayerFactory();
     await player.setPlayerMode(mode);
     await player.setReleaseMode(ReleaseMode.stop);
     await player.setAudioContext(AudioContext(
@@ -798,11 +826,11 @@ class AudioEngine {
       if (_triggerGen[track] != gen) return;
       _pendingRebuild[track] = null;
     }
-    final player = _players[_primary(track)];
     if (trimmed && _playerModes[track] != PlayerMode.mediaPlayer) {
       await _rebuildPlayer(track, PlayerMode.mediaPlayer);
       if (_triggerGen[track] != gen) return;
     }
+    final player = _players[_primary(track)];
     await player.setVolume(0.0);
     if (_triggerGen[track] != gen) return;
     await player.stop();
