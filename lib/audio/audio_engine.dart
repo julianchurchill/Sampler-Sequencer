@@ -148,6 +148,11 @@ class AudioEngine {
   /// can await it before using a partially-initialised player.
   final List<Future<void>?> _pendingRebuild = List.filled(kNumTracks, null);
 
+  /// Exposed for tests that need to assert whether a rebuild future survived
+  /// an interleaved trigger — do not use in production code.
+  @visibleForTesting
+  Future<void>? pendingRebuildForTrack(int track) => _pendingRebuild[track];
+
   /// Per-track in-flight source-reload future. Set by `_reloadSourceForTrack`
   /// whenever a sample change is applied; cleared when the reload completes.
   ///
@@ -840,7 +845,6 @@ class AudioEngine {
     if (_pendingRebuild[track] != null) {
       await _pendingRebuild[track];
       if (_triggerGen[track] != gen) return;
-      _pendingRebuild[track] = null;
     }
     if (trimmed && _playerModes[track] != PlayerMode.mediaPlayer) {
       await _rebuildPlayer(track, PlayerMode.mediaPlayer);

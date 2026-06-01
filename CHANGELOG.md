@@ -5,6 +5,18 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [2.8.5] - 2026-06-01
+
+### Fixed
+- `_pendingRebuild[track]` is no longer unconditionally nulled inside
+  `_triggerMediaPlayer` after awaiting the in-flight rebuild future. The
+  previous code cleared the slot even when a newer rebuild future (F2) had
+  been stored concurrently while the trigger was suspended. This discarded F2,
+  so the next trigger would skip the await and race F2's platform-channel
+  setup on the new `AudioPlayer`. The `whenComplete` identity guard inside
+  `_schedulePlayerModeSwitch` already handles cleanup correctly; the redundant
+  clear in `_triggerMediaPlayer` has been removed. (Issue #82)
+
 ## [2.8.4] - 2026-06-01
 
 ### Fixed

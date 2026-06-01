@@ -462,4 +462,107 @@ void main() {
       },
     );
   });
+
+  // ---------------------------------------------------------------------------
+  group('AudioEngine _pendingRebuild concurrency (issue #82)', () {
+    late AudioEngine engine;
+    late List<MockAudioPlayer> allPlayers;
+
+    setUp(() {
+      engine = AudioEngine();
+
+      final stopCounts = <MockAudioPlayer, int>{};
+      final playCounts = <MockAudioPlayer, int>{};
+      final playVolumes = <MockAudioPlayer, List<double>>{};
+      allPlayers = [
+        for (int i = 0; i < 4 * AudioEngine.slotsPerTrack; i++)
+          _makePlayer(stopCounts, playCounts, playVolumes),
+      ];
+
+      final preview = MockAudioPlayer();
+      when(() => preview.onPositionChanged)
+          .thenAnswer((_) => const Stream.empty());
+      when(() => preview.onPlayerComplete)
+          .thenAnswer((_) => const Stream.empty());
+
+      engine.initForTest(players: allPlayers, previewPlayer: preview);
+    });
+
+    // -----------------------------------------------------------------------
+    test(
+      'F2 (concurrent rebuild) survives in _pendingRebuild after trigger '
+      'awaits F1 — regression for issue #82',
+      () async {
+        // Scenario:
+        //   1. setTrim()  → _schedulePlayerModeSwitch → F1 stored in _pendingRebuild.
+        //   2. trigger()  → _triggerMediaPlayer reads F1, suspends at `await F1`.
+        //   3. clearTrim() → _schedulePlayerModeSwitch → F2 stored, overwriting F1.
+        //   4. F1 completes → whenComplete identity-check leaves F2 alone (correct).
+        //   5. trigger() resumes → BUG: line 843 unconditionally nulls _pendingRebuild,
+        //      discarding F2. Next trigger() skips the await and races F2's
+        //      platform-channel setup on the new player.
+        //
+        // Fix: remove line 843. The whenComplete callback in
+        // _schedulePlayerModeSwitch already handles cleanup correctly.
+
+        final completer1 = Completer<void>();
+        final completer2 = Completer<void>();
+
+        final stopCounts = <MockAudioPlayer, int>{};
+        final playCounts = <MockAudioPlayer, int>{};
+        final playVolumes = <MockAudioPlayer, List<double>>{};
+
+        // player1 is created by F1 (setTrim → mediaPlayer rebuild).
+        final player1 = _makePlayer(stopCounts, playCounts, playVolumes);
+        when(() => player1.setPlayerMode(any()))
+            .thenAnswer((_) => completer1.future);
+
+        // player2 is created by F2 (clearTrim → lowLatency rebuild) and also
+        // by the inline _rebuildPlayer inside _triggerMediaPlayer (factoryCount
+        // ≥ 2 always returns player2).
+        final player2 = _makePlayer(stopCounts, playCounts, playVolumes);
+        when(() => player2.setPlayerMode(any()))
+            .thenAnswer((_) => completer2.future);
+
+        int factoryCount = 0;
+        engine.audioPlayerFactory = () {
+          factoryCount++;
+          return factoryCount == 1 ? player1 : player2;
+        };
+
+        // Step 1: setTrim → F1 launched (blocks at completer1).
+        engine.setTrim(0, const Duration(milliseconds: 100), null);
+        await Future<void>.delayed(Duration.zero);
+
+        // Step 2: trigger → enters _triggerMediaPlayer, suspends at await F1.
+        final triggerFuture = engine.trigger(0, velocity: 1.0);
+        await Future<void>.delayed(Duration.zero);
+
+        // Step 3: clearTrim → F2 launched (blocks at completer2); stored in
+        // _pendingRebuild, overwriting F1's slot.
+        engine.clearTrim(0);
+        await Future<void>.delayed(Duration.zero);
+
+        // Step 4: release F1; trigger resumes, hits the BUG line (or not), then
+        // enters the inline _rebuildPlayer (blocked on completer2).
+        completer1.complete();
+        await Future<void>.delayed(Duration.zero);
+
+        // F2 is still in-flight (completer2 not released). _pendingRebuild[0]
+        // must still point to F2 — if it is null, the next trigger() would
+        // skip the await and race F2's platform-channel writes.
+        expect(engine.pendingRebuildForTrack(0), isNotNull,
+            reason: '_pendingRebuild[0] must still hold F2 after trigger '
+                'awaited F1. Line 843 unconditionally nulls the slot, '
+                'discarding any newer future stored while the trigger was '
+                'suspended — causing a race with the concurrent rebuild.');
+
+        // Release F2 so both the in-flight background rebuild and the inline
+        // rebuild inside _triggerMediaPlayer can complete, allowing the trigger
+        // to finish normally.
+        completer2.complete();
+        await triggerFuture;
+      },
+    );
+  });
 }
