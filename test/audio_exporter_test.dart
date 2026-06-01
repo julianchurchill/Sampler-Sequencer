@@ -451,4 +451,166 @@ void main() {
       }
     });
   });
+
+  // -------------------------------------------------------------------------
+  group('resampleWav', () {
+    test('returns the identical object when target rate matches source rate',
+        () {
+      final wav = WavData(
+        sampleRate: 44100,
+        numChannels: 1,
+        samples: Int16List.fromList([100, 200, 300]),
+      );
+      final result = resampleWav(wav, 44100);
+      expect(identical(result, wav), isTrue,
+          reason: 'resampleWav must return the same object when '
+              'target rate already equals source rate');
+    });
+
+    test('upsampling 22050 → 44100 Hz approximately doubles the frame count',
+        () {
+      const srcFrames = 100;
+      final wav = WavData(
+        sampleRate: 22050,
+        numChannels: 1,
+        samples: Int16List(srcFrames),
+      );
+      final result = resampleWav(wav, 44100);
+      expect(result.sampleRate, 44100,
+          reason: 'Resampled WavData must report the target sample rate');
+      expect(result.numFrames, closeTo(srcFrames * 2, 1),
+          reason: 'Upsampling 22050 → 44100 must approximately double '
+              'the frame count; got ${result.numFrames}');
+    });
+
+    test('downsampling 48000 → 24000 Hz approximately halves the frame count',
+        () {
+      const srcFrames = 100;
+      final wav = WavData(
+        sampleRate: 48000,
+        numChannels: 1,
+        samples: Int16List(srcFrames),
+      );
+      final result = resampleWav(wav, 24000);
+      expect(result.numFrames, closeTo(srcFrames ~/ 2, 1),
+          reason: 'Downsampling 48000 → 24000 must approximately halve '
+              'the frame count; got ${result.numFrames}');
+    });
+
+    test('a constant (DC) signal survives resampling unchanged', () {
+      const dcValue = 1000;
+      final wav = WavData(
+        sampleRate: 22050,
+        numChannels: 1,
+        samples: Int16List.fromList(List.filled(100, dcValue)),
+      );
+      final result = resampleWav(wav, 44100);
+      for (int i = 0; i < result.samples.length; i++) {
+        expect(result.samples[i], dcValue,
+            reason: 'DC signal sample[$i]: resampling must preserve a '
+                'constant value; got ${result.samples[i]}');
+      }
+    });
+
+    test('stereo resampling preserves channel count and interleaving', () {
+      // L=100, R=200 repeated across frames.
+      final wav = WavData(
+        sampleRate: 22050,
+        numChannels: 2,
+        samples: Int16List.fromList(
+          List.generate(200, (i) => i.isEven ? 100 : 200),
+        ),
+      );
+      final result = resampleWav(wav, 44100);
+      expect(result.numChannels, 2,
+          reason: 'Channel count must be preserved after resampling');
+      expect(result.samples.length, result.numFrames * 2,
+          reason: 'Stereo output samples must be 2× numFrames');
+      for (int f = 0; f < result.numFrames; f++) {
+        expect(result.samples[f * 2], 100,
+            reason: 'Stereo DC L-channel must be 100 at frame $f');
+        expect(result.samples[f * 2 + 1], 200,
+            reason: 'Stereo DC R-channel must be 200 at frame $f');
+      }
+    });
+  });
+
+  // -------------------------------------------------------------------------
+  group('AudioExporter sample-rate resampling (issue #80)', () {
+    late Directory tmpDir;
+
+    setUp(() async {
+      tmpDir =
+          await Directory.systemTemp.createTemp('export_resample_test_');
+    });
+
+    tearDown(() => tmpDir.deleteSync(recursive: true));
+
+    test(
+      '22050 Hz 1-second sample exports at the correct duration '
+      '(~44100 output frames, not ~22050)',
+      () async {
+        // Root cause: _runExport placed each source frame into one output-buffer
+        // position regardless of the source sample rate. A 22050 Hz sample
+        // occupied only 22050 positions in the 44100 Hz output → half-speed,
+        // one octave up. This test fails if the WAV is not resampled before mixing.
+        const srcRate = 22050;
+        const srcFrames = srcRate; // exactly 1 second at 22050 Hz
+
+        final srcPath = '${tmpDir.path}/input_22050.wav';
+        final srcSamples = Int16List(srcFrames); // silence — duration only
+        await File(srcPath).writeAsBytes([
+          ...writeWavHeader(
+              numSamples: srcFrames, sampleRate: srcRate, numChannels: 1),
+          ...srcSamples.buffer.asUint8List(),
+        ]);
+
+        final outputPath = '${tmpDir.path}/output.wav';
+        await AudioExporter.export(
+          samplePaths: [
+            srcPath,
+            '/nonexistent/b.wav',
+            '/nonexistent/c.wav',
+            '/nonexistent/d.wav',
+          ],
+          volumes: [1.0, 1.0, 1.0, 1.0],
+          trimStarts: [
+            Duration.zero,
+            Duration.zero,
+            Duration.zero,
+            Duration.zero,
+          ],
+          trimEnds: [null, null, null, null],
+          steps: [
+            [true], // track 0: step 0 active
+            [false],
+            [false],
+            [false],
+          ],
+          bpm: 120,
+          numSteps: 1,
+          numLoops: 1,
+          outputPath: outputPath,
+        );
+
+        final out = await readWav(outputPath);
+        expect(out, isNotNull,
+            reason: 'Output WAV must be readable after export');
+        expect(out!.sampleRate, 44100,
+            reason: 'Exported WAV must be at 44100 Hz');
+
+        // The output must contain approximately 1 second of audio.
+        // numFrames is stereo-frame count at 44100 Hz → should be ~44100.
+        // Before fix it was ~22050 (half-speed).
+        expect(out.numFrames, greaterThan(40000),
+            reason: 'Output frame count must correspond to ~1 second at '
+                '44100 Hz. Got ${out.numFrames} frames — a value near 22050 '
+                'means the sample was exported at double speed without '
+                'resampling (issue #80).');
+        expect(out.numFrames, lessThan(48000),
+            reason: 'Output frame count must not greatly exceed 1 second '
+                '(got ${out.numFrames} frames); possible padding error.');
+      },
+    );
+  });
 }

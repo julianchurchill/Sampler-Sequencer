@@ -27,6 +27,40 @@ class WavData {
   int get numFrames => samples.length ~/ numChannels;
 }
 
+/// Resample [wav] to [targetRate] using linear interpolation.
+///
+/// Returns [wav] unchanged if its rate already matches [targetRate].
+/// The output frame count is `(numFrames × targetRate / sampleRate).round()`.
+WavData resampleWav(WavData wav, int targetRate) {
+  if (wav.sampleRate == targetRate) return wav;
+  final srcFrames = wav.numFrames;
+  final numChannels = wav.numChannels;
+  final numOutputFrames =
+      (srcFrames * targetRate / wav.sampleRate).round();
+  if (numOutputFrames == 0) {
+    return WavData(
+        sampleRate: targetRate,
+        numChannels: numChannels,
+        samples: Int16List(0));
+  }
+  final output = Int16List(numOutputFrames * numChannels);
+  for (int outF = 0; outF < numOutputFrames; outF++) {
+    final srcPos = outF * wav.sampleRate / targetRate;
+    final f0 = srcPos.floor();
+    final frac = srcPos - f0;
+    final srcF0 = f0.clamp(0, srcFrames - 1);
+    final srcF1 = (f0 + 1).clamp(0, srcFrames - 1);
+    for (int ch = 0; ch < numChannels; ch++) {
+      final s0 = wav.samples[srcF0 * numChannels + ch].toDouble();
+      final s1 = wav.samples[srcF1 * numChannels + ch].toDouble();
+      output[outF * numChannels + ch] =
+          (s0 + (s1 - s0) * frac).round().clamp(-32768, 32767);
+    }
+  }
+  return WavData(
+      sampleRate: targetRate, numChannels: numChannels, samples: output);
+}
+
 /// Build a 44-byte WAV header for 16-bit PCM data.
 ///
 /// [numSamples] is the total number of sample values (frames × channels).
