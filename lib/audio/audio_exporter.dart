@@ -105,7 +105,7 @@ Future<List<int>> _runExport(_ExportParams p) async {
     if (wav == null) {
       unsupportedTracks.add(t);
     } else {
-      trackData[t] = wav;
+      trackData[t] = resampleWav(wav, _kSampleRate);
     }
   }
 

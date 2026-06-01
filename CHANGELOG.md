@@ -5,6 +5,17 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [2.8.4] - 2026-06-01
+
+### Fixed
+- WAV files recorded or imported at non-44100 Hz sample rates (e.g. 22050 Hz,
+  48000 Hz) are now resampled to 44100 Hz before mixing in `AudioExporter`.
+  Previously each source frame was placed directly into the 44100 Hz output
+  buffer, causing a 22050 Hz sample to play at double speed (one octave up)
+  and a 48000 Hz sample to play slightly slow and flat. A linear-interpolation
+  `resampleWav` function was added to `wav_io.dart`; the exporter applies it
+  transparently after loading each track's WAV. (Issue #80)
+
 ## [2.8.3] - 2026-05-31
 
 ### Fixed
